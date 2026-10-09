@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser, getAuthToken } from "../../utils/auth";
 import { socket } from "../../utils/socket";
 import * as XLSX from "xlsx-js-style";
@@ -17,7 +17,7 @@ import {
 import GlobalPagination from "../../components/admin/GlobalPagination";
 import {
   ShoppingBag, Clock3, CheckCircle, XCircle, Truck, Wallet,
-  Search, Eye, Pencil, Trash2, RotateCcw, CalendarDays,
+  Search, Pencil, Trash2, RotateCcw, CalendarDays,
   Store, Utensils, CreditCard, Landmark,
 } from "lucide-react";
 
@@ -123,34 +123,45 @@ function AdminOrdersPage() {
 
   // ─── Filters ──────────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const customerName = order.customerName || order.fullName || order.name || "";
-      const phone = order.phone || "";
-      const orderId = String(order.id || "");
-      const keyword = (globalSearch || search).toLowerCase().trim();
-      const searchKeyword = keyword.replace("#", "");
-      const rawCustomerName = customerName.toLowerCase();
-      const normalizedCustomerName = removeVietnameseTones(customerName);
-      const normalizedKeyword = removeVietnameseTones(searchKeyword);
-      const matchName = !keyword ? true : hasVietnameseTone(keyword) ? rawCustomerName.startsWith(keyword) : normalizedCustomerName.startsWith(normalizedKeyword);
-      const matchSearch = !keyword || matchName || phone.includes(searchKeyword) || orderId.toLowerCase().includes(searchKeyword);
+    const rawKeyword = String(globalSearch || search || "").trim().replace("#", "");
 
-      let matchDate = true;
-      if (dateRange?.startDate || dateRange?.endDate) {
-        const orderDate = new Date(order.createdAt);
-        const start = dateRange.startDate ? new Date(dateRange.startDate) : null;
-        const end = dateRange.endDate ? new Date(dateRange.endDate) : null;
-        if (start) start.setHours(0, 0, 0, 0);
-        if (end) end.setHours(23, 59, 59, 999);
-        matchDate = (!start || orderDate >= start) && (!end || orderDate <= end);
-      }
+    const scored = orders
+      .map((order) => {
+        let matchDate = true;
+        if (dateRange?.startDate || dateRange?.endDate) {
+          const orderDate = new Date(order.createdAt);
+          const start = dateRange.startDate ? new Date(dateRange.startDate) : null;
+          const end = dateRange.endDate ? new Date(dateRange.endDate) : null;
+          if (start) start.setHours(0, 0, 0, 0);
+          if (end) end.setHours(23, 59, 59, 999);
+          matchDate = (!start || orderDate >= start) && (!end || orderDate <= end);
+        }
 
-      const matchService = serviceType === "all" || order.serviceType === serviceType;
-      const matchPayment = paymentMethod === "all" || order.paymentMethod === paymentMethod;
-      const matchStatus = statusFilter === "all" || getStatusTextOrder(order.status) === statusFilter || order.status === statusFilter;
-      const matchTab = activeTab === "all" || (activeTab === "dinein" && order.serviceType === "dinein") || (activeTab === "food" && order.serviceType === "delivery") || (activeTab === "pickup" && order.serviceType === "pickup") || (activeTab === "cancelled" && getStatusTextOrder(order.status) === "Đã hủy");
-      return matchSearch && matchDate && matchService && matchPayment && matchStatus && matchTab;
-    });
+        const matchService = serviceType === "all" || order.serviceType === serviceType;
+        const matchPayment = paymentMethod === "all" || order.paymentMethod === paymentMethod;
+        const matchStatus = statusFilter === "all" || getStatusTextOrder(order.status) === statusFilter || order.status === statusFilter;
+        const matchTab = activeTab === "all" || (activeTab === "dinein" && order.serviceType === "dinein") || (activeTab === "food" && order.serviceType === "delivery") || (activeTab === "pickup" && order.serviceType === "pickup") || (activeTab === "cancelled" && getStatusTextOrder(order.status) === "Đã hủy");
+
+        if (!matchDate || !matchService || !matchPayment || !matchStatus || !matchTab) return null;
+
+        const score = rawKeyword ? calculateSearchScore({
+          customerName: order.customerName || order.fullName || order.name,
+          phone: order.phone,
+          orderCode: String(order.id || order.orderCode || ""),
+          id: order.id,
+          tableName: order.tableName,
+          notes: order.notes || (order.items || []).map((i) => i.foodName || i.name).join(" ")
+        }, rawKeyword) : 1;
+
+        if (score === 0) return null;
+        return { order, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored.map((s) => s.order);
   }, [orders, search, globalSearch, dateRange, serviceType, paymentMethod, statusFilter, activeTab]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize);
@@ -272,7 +283,7 @@ function AdminOrdersPage() {
       setOrders((prev) => prev.map((order) => String(order.id) === String(id) ? updatedOrder : order));
       setSelectedOrder((prev) => prev && String(prev.id) === String(id) ? updatedOrder : prev);
       showAdminToast({ title: "Cập nhật trạng thái đơn hàng thành công", message: `Đã chuyển đơn #${updatedOrder.id} sang "${getStatusTextOrder(status)}".` });
-    } catch (error) { console.error(error); alert("Không kết nối được backend."); }
+    } catch (error) { console.error(error); showAdminToast({ title: "Lỗi kết nối", message: "Không kết nối được máy chủ.", type: "error" }); }
   };
 
   const openEditOrderModal = (order) => { setEditingOrder(order); setEditForm({ status: order.status || "pending", paymentMethod: order.paymentMethod || "", note: order.note || "" }); };
@@ -282,17 +293,16 @@ function AdminOrdersPage() {
     try {
       const res = await fetch(`${API_URL}/${editingOrder.id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...getAuthHeaders() }, body: JSON.stringify({ status: editForm.status, paymentMethod: editForm.paymentMethod, note: editForm.note, updatedAt: new Date().toISOString() }) });
       const data = await res.json();
-      if (!data.success) { alert("Không thể lưu thay đổi đơn hàng."); return; }
+      if (!data.success) { showAdminToast({ title: "Lỗi", message: data.message || "Không thể lưu thay đổi đơn hàng.", type: "error" }); return; }
       const updatedOrder = data.order;
       setOrders((prev) => prev.map((order) => String(order.id) === String(editingOrder.id) ? updatedOrder : order));
       setSelectedOrder((prev) => prev && String(prev.id) === String(editingOrder.id) ? updatedOrder : prev);
       showAdminToast({ title: "Lưu thay đổi đơn hàng thành công", message: `Đã cập nhật đơn #${updatedOrder.id}.` });
       setEditingOrder(null);
-    } catch (error) { console.error(error); alert("Không kết nối được backend."); }
+    } catch (error) { console.error(error); showAdminToast({ title: "Lỗi kết nối", message: "Không kết nối được máy chủ.", type: "error" }); }
   };
 
-  const cancelOrderByTrash = (order) => setDeleteConfirmOrder({ cancel: true, order });
-  const executeCancelOrder = (order) => updateOrderStatus(order.id, "cancelled");
+
 
   const toggleSelectOrder = (orderId) => setSelectedOrderIds((prev) => prev.includes(String(orderId)) ? prev.filter((id) => id !== String(orderId)) : [...prev, String(orderId)]);
   const toggleSelectAllCurrentPage = () => {
@@ -320,31 +330,158 @@ function AdminOrdersPage() {
 
   // ─── RENDER ───────────────────────────────────────────────────────
   return (
-    <div className="space-y-5">
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7 gap-3">
+    <div className="space-y-4 sm:space-y-5">
+      {/* Desktop & Tablet Stats Grid (>= sm) */}
+      <div className="hidden sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-2.5 sm:gap-3">
         <OrderStatCard icon={<ShoppingBag />} title="Tất cả đơn hàng" value={orders.length} bg="bg-green-50" color="text-green-700" />
         <OrderStatCard icon={<Clock3 />} title="Chờ xác nhận" value={pendingCount} bg="bg-blue-50" color="text-blue-600" />
         <OrderStatCard icon={<CalendarDays />} title="Đang chuẩn bị" value={preparingCount} bg="bg-purple-50" color="text-purple-600" />
         <OrderStatCard icon={<Truck />} title="Đang giao" value={deliveringCount} bg="bg-orange-50" color="text-orange-600" />
         <OrderStatCard icon={<CheckCircle />} title="Hoàn thành" value={completedCount} bg="bg-green-50" color="text-green-600" />
         <OrderStatCard icon={<XCircle />} title="Đã hủy" value={cancelledCount} bg="bg-red-50" color="text-red-600" />
-        <OrderStatCard icon={<Wallet />} title="Tổng doanh thu" value={formatPriceOrder(totalRevenue)} bg="bg-yellow-50" color="text-yellow-600" />
+        <OrderStatCard
+          icon={<Wallet />}
+          title="Tổng doanh thu"
+          value={formatPriceOrder(totalRevenue)}
+          bg="bg-yellow-50"
+          color="text-yellow-600"
+          className="sm:col-span-2 md:col-span-3 lg:col-span-2 2xl:col-span-1"
+        />
+      </div>
+
+      {/* Mobile Compact Stats Section (< sm) */}
+      <div className="sm:hidden space-y-2.5">
+        {/* Mobile Revenue Hero Card */}
+        <div className="bg-gradient-to-r from-emerald-800 to-teal-900 rounded-2xl p-4 text-white shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">Tổng doanh thu</p>
+            <h3 className="text-xl font-black mt-0.5 tracking-tight">{formatPriceOrder(totalRevenue)}</h3>
+            <p className="text-[11px] text-emerald-200 font-semibold mt-1">Tổng cộng: <span className="font-black text-white">{orders.length}</span> đơn hàng</p>
+          </div>
+          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center text-emerald-200 shrink-0">
+            <Wallet size={22} />
+          </div>
+        </div>
+
+        {/* Mobile Status 2-Row Grid (3 columns x 2 rows = 6 buttons) */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "all"
+                ? "bg-emerald-50 text-emerald-900 border-emerald-300 ring-1 ring-emerald-300/30 shadow-2xs"
+                : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-0.5 opacity-85 gap-1">
+              <span className="text-[10px] font-bold uppercase truncate">Tất cả</span>
+              <ShoppingBag size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{orders.length}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Chờ xác nhận" ? "all" : "Chờ xác nhận")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "Chờ xác nhận"
+                ? "bg-blue-50 text-blue-700 border-blue-300 ring-1 ring-blue-300/30 shadow-2xs"
+                : "bg-white border-blue-100 text-slate-700 hover:bg-blue-50/40"
+            }`}
+          >
+            <div className={`flex items-center justify-between mb-0.5 gap-1 ${statusFilter === "Chờ xác nhận" ? "text-blue-700" : "text-blue-600"}`}>
+              <span className="text-[10px] font-bold uppercase truncate">Chờ duyệt</span>
+              <Clock3 size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{pendingCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Đang chuẩn bị" ? "all" : "Đang chuẩn bị")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "Đang chuẩn bị"
+                ? "bg-purple-50 text-purple-700 border-purple-300 ring-1 ring-purple-300/30 shadow-2xs"
+                : "bg-white border-purple-100 text-slate-700 hover:bg-purple-50/40"
+            }`}
+          >
+            <div className={`flex items-center justify-between mb-0.5 gap-1 ${statusFilter === "Đang chuẩn bị" ? "text-purple-700" : "text-purple-600"}`}>
+              <span className="text-[10px] font-bold uppercase truncate">Chuẩn bị</span>
+              <CalendarDays size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{preparingCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Đang giao" ? "all" : "Đang giao")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "Đang giao"
+                ? "bg-amber-50 text-amber-800 border-amber-300 ring-1 ring-amber-300/30 shadow-2xs"
+                : "bg-white border-amber-100 text-slate-700 hover:bg-amber-50/40"
+            }`}
+          >
+            <div className={`flex items-center justify-between mb-0.5 gap-1 ${statusFilter === "Đang giao" ? "text-amber-800" : "text-amber-600"}`}>
+              <span className="text-[10px] font-bold uppercase truncate">Đang giao</span>
+              <Truck size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{deliveringCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Hoàn thành" ? "all" : "Hoàn thành")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "Hoàn thành"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-300/30 shadow-2xs"
+                : "bg-white border-emerald-100 text-slate-700 hover:bg-emerald-50/40"
+            }`}
+          >
+            <div className={`flex items-center justify-between mb-0.5 gap-1 ${statusFilter === "Hoàn thành" ? "text-emerald-700" : "text-emerald-600"}`}>
+              <span className="text-[10px] font-bold uppercase truncate">Hoàn thành</span>
+              <CheckCircle size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{completedCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Đã hủy" ? "all" : "Đã hủy")}
+            className={`rounded-xl p-2 sm:p-2.5 border text-left transition-all min-w-0 flex flex-col justify-between ${
+              statusFilter === "Đã hủy"
+                ? "bg-rose-50 text-rose-700 border-rose-300 ring-1 ring-rose-300/30 shadow-2xs"
+                : "bg-white border-rose-100 text-slate-700 hover:bg-rose-50/40"
+            }`}
+          >
+            <div className={`flex items-center justify-between mb-0.5 gap-1 ${statusFilter === "Đã hủy" ? "text-rose-700" : "text-rose-600"}`}>
+              <span className="text-[10px] font-bold uppercase truncate">Đã hủy</span>
+              <XCircle size={12} className="shrink-0" />
+            </div>
+            <span className="text-sm sm:text-base font-black leading-none mt-0.5">{cancelledCount}</span>
+          </button>
+        </div>
       </div>
 
       <div className={`grid grid-cols-1 gap-4 items-start ${selectedOrder ? "xl:grid-cols-[minmax(0,1fr)_380px]" : ""}`}>
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {/* Tabs */}
-          <div className="px-5 border-b">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center overflow-x-auto">
-                {[["all", "Tất cả đơn hàng"], ["dinein", "Ăn tại quán"], ["food", "Giao tận nơi"], ["pickup", "Đến lấy"], ["cancelled", "Đã hủy"]].map(([value, label]) => (
+          <div className="px-3 sm:px-5 border-b border-gray-100">
+            <div className="flex items-center justify-between gap-2 sm:gap-4">
+              <div className="flex items-center overflow-x-auto no-scrollbar min-w-0 flex-1">
+                {[
+                  ["all", "Tất cả đơn hàng"],
+                  ["dinein", "Ăn tại quán"],
+                  ["food", "Giao tận nơi"],
+                  ["pickup", "Đến lấy"],
+                  ["cancelled", "Đã hủy"],
+                ].map(([value, label]) => (
                   <TabButton key={value} active={activeTab === value} onClick={() => setActiveTab(value)}>{label}</TabButton>
                 ))}
               </div>
-              <div className="hidden lg:flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap">
+              <div className="hidden xl:flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap shrink-0">
                 <span>Hiển thị</span>
-                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="h-10 w-[140px] rounded-xl border border-gray-100 px-3 font-bold outline-none bg-white shadow-sm">
+                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="h-9 w-[130px] rounded-xl border border-gray-200 px-2.5 text-xs font-bold outline-none bg-white shadow-2xs">
                   <option value={10}>10 / trang</option>
                   <option value={20}>20 / trang</option>
                   <option value={50}>50 / trang</option>
@@ -353,20 +490,43 @@ function AdminOrdersPage() {
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="p-4 space-y-3">
-            <div className="flex flex-nowrap items-center gap-3 overflow-hidden">
-              <div className={`h-12 rounded-xl border border-gray-100 bg-white px-4 flex items-center gap-3 shadow-sm shrink-0 ${selectedOrder ? "w-[240px]" : "w-[380px] 2xl:w-[450px]"}`}>
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm kiếm theo mã đơn, khách hàng, SĐT..." className="w-full min-w-0 outline-none text-sm truncate" />
-                <Search size={18} className="text-gray-400 shrink-0" />
+          {/* Filters - Compact, Elegant 2-Row Layout */}
+          <div className="p-2.5 sm:p-3.5 space-y-2 sm:space-y-2.5 bg-slate-50/40 border-b border-slate-100">
+            {/* Row 1: Search bar + Reset button */}
+            <div className="flex items-center gap-2">
+              <div className="h-9 sm:h-10 rounded-xl border border-slate-200/90 bg-white px-3 flex items-center gap-2 shadow-2xs flex-1 focus-within:border-emerald-600 focus-within:ring-1 focus-within:ring-emerald-600/20 transition-all">
+                <Search size={14} className="text-slate-400 shrink-0" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Tìm mã đơn, tên khách, SĐT..."
+                  className="w-full min-w-0 outline-none text-xs sm:text-sm font-medium bg-transparent text-slate-800 placeholder:text-slate-400"
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch("")} className="text-slate-400 hover:text-slate-600 text-xs font-bold px-1">×</button>
+                )}
               </div>
-              <SelectBox label="Loại hình phục vụ" value={serviceType} onChange={(e) => setServiceType(e.target.value)} compact={selectedOrder}>
+
+              <button
+                type="button"
+                onClick={resetFilter}
+                title="Xóa toàn bộ bộ lọc"
+                className="h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-xl border border-rose-200/90 bg-rose-50/70 text-rose-600 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700 shadow-2xs text-xs font-bold flex items-center justify-center gap-1.5 transition shrink-0"
+              >
+                <RotateCcw size={13} className="text-rose-600 shrink-0" />
+                <span className="hidden sm:inline">Xóa lọc</span>
+              </button>
+            </div>
+
+            {/* Row 2: 3 Filter dropdowns in a 3-column grid */}
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5">
+              <SelectBox label="Loại hình" value={serviceType} onChange={(e) => setServiceType(e.target.value)} compact={selectedOrder}>
                 <option value="all">Tất cả</option>
-                <option value="dinein">Ăn tại quán</option>
-                <option value="delivery">Giao tận nơi</option>
-                <option value="pickup">Đến lấy tại quán</option>
+                <option value="dinein">Tại quán</option>
+                <option value="delivery">Giao hàng</option>
+                <option value="pickup">Đến lấy</option>
               </SelectBox>
-              <SelectBox label="Phương thức thanh toán" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} compact={selectedOrder}>
+              <SelectBox label="Thanh toán" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} compact={selectedOrder}>
                 <option value="all">Tất cả</option>
                 <option value="cash">Tiền mặt</option>
                 <option value="bank">Chuyển khoản</option>
@@ -376,34 +536,152 @@ function AdminOrdersPage() {
               </SelectBox>
               <SelectBox label="Trạng thái" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} compact={selectedOrder}>
                 <option value="all">Tất cả</option>
-                <option value="Chờ xác nhận">Chờ xác nhận</option>
+                <option value="Chờ xác nhận">Chờ duyệt</option>
                 <option value="Đã xác nhận">Đã xác nhận</option>
-                <option value="Đang chuẩn bị">Đang chuẩn bị</option>
+                <option value="Đang chuẩn bị">Chuẩn bị</option>
                 <option value="Đang giao">Đang giao</option>
                 <option value="Hoàn thành">Hoàn thành</option>
                 <option value="Đã hủy">Đã hủy</option>
               </SelectBox>
-              <button onClick={resetFilter} className={`h-12 rounded-xl border border-gray-100 bg-white shadow-sm text-sm font-bold text-gray-600 flex items-center justify-center gap-1 shrink-0 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-all duration-200 ${selectedOrder ? "w-[56px]" : "w-[80px]"}`}>
-                <RotateCcw size={15} /><span className={selectedOrder ? "hidden 2xl:inline" : ""}>Xóa</span>
-              </button>
             </div>
           </div>
 
           {/* Bulk actions */}
           {selectedOrderIds.length > 0 && (
-            <div className="mx-4 mb-4 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-black text-primary">Đã chọn {selectedOrderIds.length} đơn hàng</p>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="mx-3 sm:mx-4 my-3 rounded-2xl border border-green-100 bg-green-50 px-3.5 sm:px-4 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <p className="text-xs sm:text-sm font-black text-primary">Đã chọn {selectedOrderIds.length} đơn hàng</p>
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {[["confirmed", "Xác nhận", "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"], ["preparing", "Chuẩn bị", "bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100"], ["delivering", "Đang giao", "bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-100"], ["completed", "Hoàn thành", "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"], ["cancelled", "Hủy đơn", "bg-red-50 text-red-600 border-red-100 hover:bg-red-100"]].map(([status, label, style]) => (
-                  <button key={status} onClick={() => updateSelectedOrdersStatus(status)} className={`h-10 px-4 rounded-xl border text-sm font-black transition ${style}`}>{label}</button>
+                  <button key={status} onClick={() => updateSelectedOrdersStatus(status)} className={`h-8 sm:h-10 px-2.5 sm:px-4 rounded-xl border text-xs sm:text-sm font-black transition ${style}`}>{label}</button>
                 ))}
-                <button onClick={() => setSelectedOrderIds([])} className="h-10 px-4 rounded-xl bg-white text-gray-500 border border-gray-100 text-sm font-black hover:bg-gray-50 transition">Bỏ chọn</button>
+                <button onClick={() => setSelectedOrderIds([])} className="h-8 sm:h-10 px-2.5 sm:px-4 rounded-xl bg-white text-gray-500 border border-gray-200 text-xs sm:text-sm font-black hover:bg-gray-50 transition">Bỏ chọn</button>
               </div>
             </div>
           )}
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Mobile Card List (lg:hidden) */}
+          <div className="block lg:hidden p-3 space-y-3 bg-slate-50/70">
+            {filteredOrders.length > 0 ? (
+              paginatedOrders.map((order, index) => {
+                const isSelected = String(selectedOrder?.id) === String(order.id);
+                const isChecked = selectedOrderIds.includes(String(order.id));
+                const statusText = getStatusTextOrder(order.status);
+                const isPending = ["pending", "Chờ xác nhận", "Chờ xử lý"].includes(order.status) || ["Chờ xác nhận", "Chờ xử lý"].includes(statusText);
+                const isDelivering = ["delivering", "Đang giao"].includes(order.status) || statusText === "Đang giao";
+                const isCompleted = ["completed", "Hoàn thành"].includes(order.status) || statusText === "Hoàn thành";
+                const isCancelled = ["cancelled", "Đã hủy"].includes(order.status) || statusText === "Đã hủy";
+
+                return (
+                  <div
+                    key={order.id || index}
+                    onClick={() => setSelectedOrder(order)}
+                    className={`bg-white rounded-2xl p-3.5 border transition-all duration-200 cursor-pointer text-left shadow-2xs hover:shadow-md relative overflow-hidden space-y-2.5 ${
+                      isSelected
+                        ? "border-emerald-600 ring-2 ring-emerald-600/20 bg-emerald-50/20"
+                        : isChecked
+                        ? "border-emerald-400 bg-emerald-50/10"
+                        : "border-slate-200/90 hover:border-slate-300"
+                    }`}
+                  >
+                    {/* Left accent color bar for instant visual status recognition */}
+                    <div
+                      className={`absolute left-0 top-0 bottom-0 w-1 ${
+                        isPending
+                          ? "bg-amber-400"
+                          : isDelivering
+                          ? "bg-amber-500"
+                          : isCompleted
+                          ? "bg-emerald-500"
+                          : isCancelled
+                          ? "bg-rose-400"
+                          : "bg-slate-300"
+                      }`}
+                    />
+
+                    {/* Top Row: Checkbox, Order ID Badge, Status & Edit Button */}
+                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => toggleSelectOrder(order.id)}
+                          className="w-4 h-4 accent-emerald-700 rounded shrink-0 cursor-pointer"
+                        />
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 font-black text-xs shrink-0 tracking-tight">
+                          #{order.id}
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold truncate ${getStatusStyleOrder(
+                            order.status
+                          )}`}
+                        >
+                          {statusText}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditOrderModal(order);
+                        }}
+                        title="Chỉnh sửa đơn hàng"
+                        className="w-7 h-7 rounded-lg bg-slate-100/80 text-slate-600 flex items-center justify-center hover:bg-emerald-50 hover:text-emerald-700 transition shrink-0"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </div>
+
+                    {/* Middle Row: Customer Info (Left) & Total / Time (Right) */}
+                    <div className="flex items-center justify-between gap-3 pt-0.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-100/60 flex items-center justify-center font-bold text-sm shrink-0">
+                          {(order.customerName || order.name || "A").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate leading-snug">
+                            {order.customerName || order.fullName || order.name || "Khách hàng"}
+                          </p>
+                          <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                            {order.phone || "Chưa có SĐT"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-base text-emerald-700 leading-none">
+                          {formatPriceOrder(order.total || order.totalPrice)}
+                        </p>
+                        <p className="text-[10.5px] text-slate-400 font-medium mt-1">
+                          {formatDateTimeOrder(order.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Bottom Row: Service Type & Payment Method Tag Chips */}
+                    <div className="pt-2 border-t border-slate-100/80 flex items-center justify-between gap-2 text-xs text-slate-600">
+                      <div className="flex items-center gap-1.5 font-medium truncate bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                        {getServiceIcon(order.serviceType)}
+                        <span className="truncate">{getServiceText(order.serviceType)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 font-medium truncate bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                        {getPaymentIcon(order.paymentMethod)}
+                        <span className="truncate">{getPaymentText(order.paymentMethod)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-5 py-12 text-center text-slate-400 font-bold text-xs bg-white rounded-2xl border border-dashed border-slate-200">
+                Chưa có đơn hàng phù hợp
+              </div>
+            )}
+          </div>
+
+          {/* Table (hidden on mobile, visible on lg+) */}
+          <div className="overflow-x-auto hidden lg:block">
             <table className="min-w-[1180px] w-full text-left text-sm">
               <thead className="bg-[#fbfcfb] text-gray-500 font-bold text-sm whitespace-nowrap">
                 <tr>
@@ -424,7 +702,7 @@ function AdminOrdersPage() {
               <tbody>
                 {filteredOrders.length > 0 ? (
                   paginatedOrders.map((order, index) => (
-                    <tr key={order.id || index} onClick={() => setSelectedOrder(order)} className={`border-t border-gray-100 hover:bg-green-50/30 transition-colors cursor-pointer ${String(selectedOrder?.id) === String(order.id) ? "bg-green-50/50" : ""}`}>
+                    <tr key={order.id || index} onClick={() => setSelectedOrder(order)} className={`border-t border-gray-100 hover:bg-black/5 transition-colors cursor-pointer ${String(selectedOrder?.id) === String(order.id) ? "bg-green-100/70" : (["pending", "Chờ xác nhận", "Chờ xử lý"].includes(order.status) || ["Chờ xác nhận", "Chờ xử lý"].includes(getStatusTextOrder(order.status))) ? "bg-red-50/80" : (["completed", "Hoàn thành"].includes(order.status) || getStatusTextOrder(order.status) === "Hoàn thành") ? "bg-green-50/60" : ""}`}>
                       <td className="px-4 py-3"><input type="checkbox" checked={selectedOrderIds.includes(String(order.id))} onClick={(e) => e.stopPropagation()} onChange={() => toggleSelectOrder(order.id)} className="w-4 h-4 accent-green-700" /></td>
                       <td className="px-4 py-3 font-black text-green-700 whitespace-nowrap">#{order.id || index + 1}</td>
                       <td className="px-4 py-3">
@@ -441,9 +719,7 @@ function AdminOrdersPage() {
                       <td className="px-4 py-3 text-gray-600 font-semibold whitespace-nowrap">{formatDateTimeOrder(order.createdAt)}</td>
                       <td className="px-4 py-3 sticky right-0 bg-white z-10 shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.25)]">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} className="w-8 h-8 rounded-lg bg-green-50 text-green-700 flex items-center justify-center hover:bg-green-100 hover:scale-105 transition-all"><Eye size={16} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center hover:bg-emerald-100 hover:scale-105 transition-all"><Pencil size={16} /></button>
-                          {currentUser?.role !== "staff" && (<button onClick={(e) => { e.stopPropagation(); cancelOrderByTrash(order); }} className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100 hover:scale-105 transition-all"><Trash2 size={16} /></button>)}
+                          <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} title="Chỉnh sửa đơn hàng" className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center hover:bg-emerald-100 hover:scale-105 transition-all"><Pencil size={16} /></button>
                         </div>
                       </td>
                     </tr>
@@ -455,8 +731,8 @@ function AdminOrdersPage() {
             </table>
           </div>
 
-          {/* Pagination & Legend */}
-          <div className="border-t border-gray-100">
+          {/* Pagination & Status Legend Footer */}
+          <div className="border-t border-slate-100 bg-white">
             <GlobalPagination
               total={filteredOrders.length}
               page={currentPage}
@@ -465,8 +741,20 @@ function AdminOrdersPage() {
               onLimitChange={setPageSize}
               limitOptions={[10, 20, 50, 100]}
             />
-            <div className="px-5 py-3 bg-gray-50/50 border-t border-gray-100 flex flex-wrap items-center gap-4 text-xs font-bold text-gray-600">
-              {[["bg-yellow-400", "Chờ xác nhận"], ["bg-blue-500", "Đã xác nhận"], ["bg-purple-500", "Đang chuẩn bị"], ["bg-orange-500", "Đang giao"], ["bg-primary", "Hoàn thành"], ["bg-red-500", "Đã hủy"]].map(([color, text]) => (<div key={text} className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${color}`}></span>{text}</div>))}
+            <div className="px-3 sm:px-5 py-2 sm:py-2.5 bg-slate-50/60 border-t border-slate-100/80 flex flex-wrap items-center justify-center sm:justify-start gap-x-3.5 gap-y-1 text-[11px] font-semibold text-slate-500">
+              {[
+                ["bg-amber-400", "Chờ xác nhận"],
+                ["bg-blue-500", "Đã xác nhận"],
+                ["bg-purple-500", "Chuẩn bị"],
+                ["bg-orange-500", "Đang giao"],
+                ["bg-emerald-500", "Hoàn thành"],
+                ["bg-rose-500", "Đã hủy"],
+              ].map(([color, text]) => (
+                <div key={text} className="flex items-center gap-1.5 shrink-0">
+                  <span className={`w-2 h-2 rounded-full ${color}`}></span>
+                  <span>{text}</span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -540,18 +828,18 @@ function AdminOrdersPage() {
       )}
 
       {/* Confirm Modal */}
-      {deleteConfirmOrder && (
+      {deleteConfirmOrder && deleteConfirmOrder.bulkStatus && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-gray-100 shadow-2xl p-6 max-w-sm w-full text-center space-y-4 animate-[scaleIn_0.2s_ease-out]">
             <div className="w-16 h-16 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto shadow-inner"><Trash2 size={28} /></div>
             <div>
-              <h4 className="font-black text-gray-900 text-base">{deleteConfirmOrder.bulkStatus ? "Xác nhận cập nhật trạng thái" : "Xác nhận hủy đơn hàng"}</h4>
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">{deleteConfirmOrder.bulkStatus ? `Bạn có chắc chắn muốn cập nhật trạng thái cho ${selectedOrderIds.length} đơn hàng đã chọn?` : `Bạn có chắc chắn muốn hủy đơn hàng #${deleteConfirmOrder.order?.id}?`}</p>
+              <h4 className="font-black text-gray-900 text-base">Xác nhận cập nhật trạng thái</h4>
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">Bạn có chắc chắn muốn cập nhật trạng thái cho {selectedOrderIds.length} đơn hàng đã chọn?</p>
             </div>
             <div className="flex items-center gap-3 pt-2">
               <button type="button" onClick={() => setDeleteConfirmOrder(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition">Hủy bỏ</button>
-              <button type="button" onClick={() => { const target = deleteConfirmOrder; setDeleteConfirmOrder(null); if (target.bulkStatus) executeUpdateSelectedOrdersStatus(target.bulkStatus); else executeCancelOrder(target.order); }} className={`flex-1 py-2.5 rounded-xl text-white text-xs font-bold transition shadow-sm ${deleteConfirmOrder.bulkStatus ? "bg-primary hover:bg-primary-light" : "bg-red-600 hover:bg-red-700"}`}>
-                {deleteConfirmOrder.bulkStatus ? "Xác nhận" : "Hủy đơn hàng"}
+              <button type="button" onClick={() => { const target = deleteConfirmOrder; setDeleteConfirmOrder(null); executeUpdateSelectedOrdersStatus(target.bulkStatus); }} className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold transition shadow-sm bg-primary hover:bg-primary-light">
+                Xác nhận
               </button>
             </div>
           </div>
@@ -561,9 +849,9 @@ function AdminOrdersPage() {
   );
 }
 
-function OrderStatCard({ icon, title, value, bg, color, note = "" }) {
+function OrderStatCard({ icon, title, value, bg, color, note = "", className = "" }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 flex items-start gap-2.5 hover:bg-green-50/40 hover:border-green-100 hover:-translate-y-0.5 hover:shadow-md transition text-left min-w-0">
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-3.5 flex items-start gap-2.5 hover:bg-green-50/40 hover:border-green-100 hover:-translate-y-0.5 hover:shadow-md transition text-left min-w-0 ${className}`}>
       {/* Icon ở trước (bên trái) */}
       <div className={`w-8 h-8 rounded-lg ${bg} ${color} flex items-center justify-center shrink-0`}>
         {React.cloneElement(icon, { size: 16 })}
@@ -572,42 +860,66 @@ function OrderStatCard({ icon, title, value, bg, color, note = "" }) {
       {/* 3 hàng bắt đầu bằng nhau ở bên phải */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Row 1: Tên danh mục */}
-        <p className="text-[11px] sm:text-xs font-black text-gray-500 truncate leading-tight">
+        <p className="text-[11px] sm:text-xs font-bold text-gray-500 truncate leading-tight">
           {title}
         </p>
 
         {/* Row 2: Số tiền, thông số */}
-        <h3 className="text-[20px] sm:text-[22px] font-black text-green-955 mt-1 leading-none truncate">
+        <h3 className="text-lg sm:text-[22px] font-black text-green-955 mt-1 leading-none truncate">
           {value}
         </h3>
 
-        {/* Row 3: Tỉ lệ % / Ghi chú */}
-        <div className="mt-1 flex items-center min-w-0 h-5">
-          <span className="px-1.5 py-0.5 rounded-lg bg-green-50 text-green-700 text-[9px] sm:text-[10px] font-black shrink-0">
-            {note || "-"}
-          </span>
-        </div>
+        {/* Row 3: Tỉ lệ % / Ghi chú (chỉ hiện khi có note thực tế) */}
+        {note && note !== "-" ? (
+          <div className="mt-1 flex items-center min-w-0 h-4">
+            <span className="px-1.5 py-0.2 rounded-md bg-green-50 text-green-700 text-[9px] sm:text-[10px] font-bold shrink-0">
+              {note}
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-
 function TabButton({ active, onClick, children }) {
   return (
-    <button onClick={onClick} className={`h-16 min-w-[180px] px-6 border-b-2 font-black text-lg whitespace-nowrap transition-all duration-200 ${active ? "border-primary/20 border-t-primary bg-primary/5" : "border-transparent text-gray-500 hover:text-primary hover:bg-primary/5"}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-11 sm:h-13 px-2.5 sm:px-4 lg:px-5 border-b-2 font-bold text-xs sm:text-sm whitespace-nowrap transition-all duration-200 shrink-0 ${
+        active
+          ? "border-emerald-700 text-emerald-800 bg-emerald-50/50"
+          : "border-transparent text-gray-500 hover:text-emerald-700 hover:bg-emerald-50/20"
+      }`}
+    >
       {children}
     </button>
   );
 }
 
 function SelectBox({ label, value, onChange, children, compact = false }) {
+  const isFiltered = value && value !== "all";
   return (
-    <label className={`h-12 rounded-xl border border-gray-100 bg-white flex flex-col justify-center shadow-sm shrink-0 min-w-0 ${compact ? "w-[125px] px-3" : "w-[160px] 2xl:w-[180px] px-4"}`}>
-      <span className="text-[11px] font-black text-gray-400 truncate">{label}</span>
-      <select value={value} onChange={onChange} className="outline-none bg-transparent text-sm font-bold text-gray-700 min-w-0 truncate">{children}</select>
+    <label
+      className={`h-9 sm:h-10 rounded-xl border flex flex-col justify-center px-2 sm:px-3 shadow-2xs min-w-0 w-full transition-all cursor-pointer ${
+        isFiltered
+          ? "border-emerald-300 bg-emerald-50/40 text-emerald-900"
+          : "border-slate-200/90 bg-white text-slate-700 hover:border-slate-300"
+      } focus-within:border-emerald-600 focus-within:ring-1 focus-within:ring-emerald-600/20 ${compact ? "lg:w-[130px]" : ""}`}
+    >
+      <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate leading-none mb-0.5 uppercase tracking-tight">{label}</span>
+      <select
+        value={value}
+        onChange={onChange}
+        className="outline-none bg-transparent text-[11px] sm:text-xs font-semibold text-slate-700 min-w-0 truncate cursor-pointer leading-tight"
+      >
+        {children}
+      </select>
     </label>
   );
 }
 
 export default AdminOrdersPage;
+
+

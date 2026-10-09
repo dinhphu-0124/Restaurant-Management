@@ -4,10 +4,10 @@ import { updateUserRole } from "../../services/roleService";
 import { getCurrentUser } from "../../utils/auth";
 import { canUseAction } from "../../utils/permissions";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { UserDetailPanel, GrantRoleModal, UserStatCard, SelectBox, IconButton } from "../../components/admin/AdminUserComponents";
 import GlobalPagination from "../../components/admin/GlobalPagination";
-import { Users, UserPlus, ShoppingBag, CalendarCheck, Wallet, Search, Eye, Pencil, Trash2, RotateCcw, Lock, Unlock } from "lucide-react";
+import { Users, UserPlus, ShoppingBag, CalendarCheck, Wallet, Search, Pencil, Trash2, RotateCcw, Lock, Unlock } from "lucide-react";
 import { ROLE_TEXT, formatPriceUser, formatDateUser, formatShortMoneyUser, formatDateTimeUser, getUserOrders, getUserBookings, getUserTotalSpent, getUserStatus, getUserGroup, getGroupTextUser, getStatusTextUser, getStatusStyleUser } from "../../utils/userHelpers";
 
 function AdminUsersPage() {
@@ -41,16 +41,29 @@ function AdminUsersPage() {
   useEffect(() => { loadUsers(); }, []);
 
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
-      const keyword = removeVietnameseTones(String(search || "").trim());
-      const cleanName = removeVietnameseTones(user.name || user.fullName);
-      const cleanPhone = removeVietnameseTones(user.phone);
-      const cleanEmail = removeVietnameseTones(user.email);
-      const matchSearch = !keyword || cleanName.includes(keyword) || cleanPhone.includes(keyword) || cleanEmail.includes(keyword);
-      const matchStatus = statusFilter === "all" || getUserStatus(user) === statusFilter;
-      const matchGroup = groupFilter === "all" || getUserGroup(user) === groupFilter;
-      return matchSearch && matchStatus && matchGroup;
-    });
+    const rawKeyword = String(search || "").trim();
+    const scored = users
+      .map((user) => {
+        const matchStatus = statusFilter === "all" || getUserStatus(user) === statusFilter;
+        const matchGroup = groupFilter === "all" || getUserGroup(user) === groupFilter;
+        if (!matchStatus || !matchGroup) return null;
+
+        const score = rawKeyword ? calculateSearchScore({
+          name: user.name || user.fullName,
+          email: user.email,
+          phone: user.phone,
+          id: user.id
+        }, rawKeyword) : 1;
+
+        if (score === 0) return null;
+        return { user, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored.map((s) => s.user);
   }, [users, search, statusFilter, groupFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
@@ -66,7 +79,7 @@ function AdminUsersPage() {
       await updateUserStatus(user.id, newStatus); await loadUsers();
       setSelectedUser((prev) => prev && String(prev.id) === String(user.id) ? { ...prev, status: newStatus } : prev);
       showAdminToast({ title: "Cập nhật trạng thái", message: `Đã ${newStatus === "locked" ? "khóa" : "mở khóa"} khách hàng ${user.name || user.fullName || user.email}.` });
-    } catch (error) { console.error(error); alert(error.message || "Không thể cập nhật trạng thái khách hàng."); }
+    } catch (error) { console.error(error); showAdminToast({ title: "Lỗi", message: error.message || "Không thể cập nhật trạng thái khách hàng.", type: "error" }); }
   };
 
   const executeDeleteUser = async (user) => {
@@ -110,7 +123,7 @@ function AdminUsersPage() {
     try {
       await bulkUpdateUserStatus(selectedIds, status); await loadUsers(); setSelectedIds([]);
       showAdminToast({ title: "Cập nhật hàng loạt thành công", message: `Đã ${status === "locked" ? "khóa" : "mở khóa"} ${selectedIds.length} khách hàng đã chọn.` });
-    } catch (error) { console.error(error); alert(error.message || "Không thể cập nhật hàng loạt."); }
+    } catch (error) { console.error(error); showAdminToast({ title: "Lỗi", message: error.message || "Không thể cập nhật hàng loạt.", type: "error" }); }
   };
 
   return (
@@ -140,7 +153,7 @@ function AdminUsersPage() {
               <SelectBox label="Trạng thái" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="all">Tất cả</option><option value="active">Hoạt động</option><option value="locked">Đã khóa</option>
               </SelectBox>
-              <button onClick={resetFilter} className="h-12 rounded-xl border border-gray-100 bg-white shadow-sm text-sm font-bold text-gray-600 flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-600 transition">
+              <button onClick={resetFilter} title="Đặt lại bộ lọc" className="h-12 rounded-xl border border-gray-100 bg-white shadow-sm text-sm font-bold text-gray-600 flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-600 transition">
                 <RotateCcw size={16} />Xóa
               </button>
             </div>
@@ -159,7 +172,122 @@ function AdminUsersPage() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+          {/* Mobile User Cards (lg:hidden) */}
+          <div className="block lg:hidden divide-y divide-gray-100">
+            {filteredUsers.length > 0 ? (
+              paginatedUsers.map((user, index) => {
+                const isSelected = String(selectedUser?.id) === String(user.id);
+                const isChecked = selectedIds.includes(String(user.id));
+                const status = getUserStatus(user);
+                const group = getUserGroup(user);
+                return (
+                  <div
+                    key={user.id || index}
+                    onClick={() => setSelectedUser(user)}
+                    className={`p-3.5 space-y-2.5 transition-colors cursor-pointer text-left ${
+                      isSelected ? "bg-emerald-50/70" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    {/* Header: Checkbox, Name, Status, Actions */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleSelectOne(user.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 accent-green-700 rounded shrink-0"
+                        />
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
+                          {(user.name || user.fullName || "K").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate">
+                            {user.name || user.fullName || "Khách hàng"}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-semibold truncate">
+                            KH{String(user.id || index + 1).slice(-5)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {canUseAction(currentUser, "roles:update") && user.role !== "admin" && (
+                          <IconButton
+                            icon={<Pencil size={14} />}
+                            color="emerald"
+                            title="Phân quyền tài khoản"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRoleModalUser(user);
+                              setRoleValue("staff");
+                            }}
+                          />
+                        )}
+                        <IconButton
+                          icon={status === "locked" ? <Lock size={14} /> : <Unlock size={14} />}
+                          color="orange"
+                          disabled={!canUseAction(currentUser, "customers:lock")}
+                          title={status === "locked" ? "Mở khóa tài khoản" : "Khóa tài khoản"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleUserStatus(user);
+                          }}
+                        />
+                        <IconButton
+                          icon={<Trash2 size={14} />}
+                          color="red"
+                          disabled={!canUseAction(currentUser, "customers:lock")}
+                          title="Xóa khách hàng"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmUser({ user });
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Contact & Stats Row */}
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div className="text-slate-500 min-w-0">
+                        <p className="truncate font-medium">{user.phone || "Chưa có SĐT"}</p>
+                        <p className="truncate text-[11px] text-slate-400">{user.email || "Chưa có email"}</p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-sm text-emerald-700">
+                          {formatPriceUser(getUserTotalSpent(user))}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          {Number(user.orderCount || getUserOrders(user).length || 0)} đơn • {Number(user.bookingCount || getUserBookings(user).length || 0)} bàn
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Group & Status Footer */}
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                        {getGroupTextUser(group)}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getStatusStyleUser(status)}`}>
+                        {getStatusTextUser(status)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="px-5 py-12 text-center text-gray-400 font-bold text-xs">
+                Chưa có khách hàng phù hợp
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table (hidden on mobile, visible on lg+) */}
+          <div className="overflow-x-auto hidden lg:block">
             <table className="min-w-[1300px] w-full text-left text-sm">
               <thead className="bg-[#fbfcfb] text-gray-600 font-black text-xs uppercase whitespace-nowrap">
                 <tr>
@@ -187,10 +315,9 @@ function AdminUsersPage() {
                         <td className="px-4 py-3"><span className={`px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap ${getStatusStyleUser(status)}`}>{getStatusTextUser(status)}</span></td>
                         <td className="px-4 py-3 sticky right-0 bg-white z-10 shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.25)]">
                           <div className="flex items-center justify-center gap-1.5">
-                            <IconButton icon={<Eye size={16} />} color="green" onClick={(e) => { e.stopPropagation(); setSelectedUser(user); }} />
-                            {canUseAction(currentUser, 'roles:update') && user.role !== "admin" && (<IconButton icon={<Pencil size={16} />} color="emerald" onClick={(e) => { e.stopPropagation(); setRoleModalUser(user); setRoleValue("staff"); }} />)}
-                            <IconButton icon={status === "locked" ? <Lock size={16} /> : <Unlock size={16} />} color="orange" disabled={!canUseAction(currentUser, 'customers:lock')} title={!canUseAction(currentUser, 'customers:lock') ? "Bạn không có quyền." : ""} onClick={(e) => { e.stopPropagation(); toggleUserStatus(user); }} />
-                            <IconButton icon={<Trash2 size={16} />} color="red" disabled={!canUseAction(currentUser, 'customers:lock')} title={!canUseAction(currentUser, 'customers:lock') ? "Bạn không có quyền." : ""} onClick={(e) => { e.stopPropagation(); setDeleteConfirmUser({ user }); }} />
+                            {canUseAction(currentUser, 'roles:update') && user.role !== "admin" && (<IconButton icon={<Pencil size={16} />} color="emerald" title="Phân quyền tài khoản" onClick={(e) => { e.stopPropagation(); setRoleModalUser(user); setRoleValue("staff"); }} />)}
+                            <IconButton icon={status === "locked" ? <Lock size={16} /> : <Unlock size={16} />} color="orange" disabled={!canUseAction(currentUser, 'customers:lock')} title={!canUseAction(currentUser, 'customers:lock') ? "Bạn không có quyền thực hiện thao tác này." : status === "locked" ? "Mở khóa tài khoản" : "Khóa tài khoản"} onClick={(e) => { e.stopPropagation(); toggleUserStatus(user); }} />
+                            <IconButton icon={<Trash2 size={16} />} color="red" disabled={!canUseAction(currentUser, 'customers:lock')} title={!canUseAction(currentUser, 'customers:lock') ? "Bạn không có quyền thực hiện thao tác này." : "Xóa khách hàng"} onClick={(e) => { e.stopPropagation(); setDeleteConfirmUser({ user }); }} />
                           </div>
                         </td>
                       </tr>

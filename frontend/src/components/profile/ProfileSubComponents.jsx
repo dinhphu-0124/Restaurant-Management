@@ -1,12 +1,36 @@
 import React, { useState, useEffect, useMemo } from "react";
-import GlobalPagination from "../admin/GlobalPagination";
 import { useNavigate } from "react-router-dom";
+import GlobalPagination from "../admin/GlobalPagination";
+import { showAdminToast } from "../admin/AdminToast";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import {
   CalendarDays,
   ShoppingCart,
   ReceiptText,
   CreditCard,
+  Clock,
+  MapPin,
+  User,
+  Star,
+  ChevronRight,
+  ArrowRight,
+  Utensils,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Truck,
+  Store,
+  Eye,
+  MessageSquarePlus,
+  X,
+  Search,
+  SlidersHorizontal,
+  RotateCcw,
+  Trash2,
+  Minus,
+  Plus,
 } from "lucide-react";
+import { AppBadge, AppButton, AppEmptyState, AppSkeleton } from "../ui";
 
 const API_URL = "http://localhost:5001";
 
@@ -32,41 +56,14 @@ const handleAuthApiError = (data, navigate) => {
   return false;
 };
 
-const getBookingStatusText = (status) => {
-  switch (status) {
-    case "confirmed":
-      return "Đã xác nhận";
-    case "serving":
-      return "Đang phục vụ";
-    case "completed":
-      return "Hoàn thành";
-    case "cancelled":
-    case "canceled":
-      return "Đã hủy";
-    default:
-      return "Chờ xác nhận";
-  }
-};
-
-const getBookingStatusStyle = (status) => {
-  switch (status) {
-    case "confirmed":
-      return "bg-blue-50 text-blue-600";
-    case "serving":
-      return "bg-indigo-50 text-indigo-600";
-    case "completed":
-      return "bg-green-50 text-green-700";
-    case "cancelled":
-    case "canceled":
-      return "bg-red-50 text-red-600";
-    default:
-      return "bg-orange-50 text-orange-600";
-  }
-};
-
+/* ==========================================================================
+   ORDER HISTORY CONTENT
+   ========================================================================== */
 export function OrderHistoryContent() {
   const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState("all");
   const [savedOrders, setSavedOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -76,7 +73,7 @@ export function OrderHistoryContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeFilter, timeFilter]);
+  }, [activeFilter, statusFilter, timeFilter, searchTerm]);
 
   const loadMyOrders = async () => {
     const token = getAuthToken();
@@ -122,16 +119,6 @@ export function OrderHistoryContent() {
     };
   }, []);
 
-  const orders = savedOrders;
-
-  const serviceFilteredOrders =
-    activeFilter === "all"
-      ? orders
-      : orders.filter((order) => {
-          const type = order.serviceType || order.type;
-          return type === activeFilter;
-        });
-
   const parseDate = (dateString) => {
     if (!dateString) return new Date(0);
     if (String(dateString).includes("/")) {
@@ -143,25 +130,88 @@ export function OrderHistoryContent() {
 
   const now = new Date();
 
-  const filteredOrders = serviceFilteredOrders.filter((order) => {
-    if (timeFilter === "all") return true;
-    const orderDate = parseDate(order.createdAt || order.date);
+  // Counts for tabs
+  const deliveryCount = useMemo(
+    () => savedOrders.filter((o) => (o.serviceType || o.type) === "delivery").length,
+    [savedOrders]
+  );
+  const pickupCount = useMemo(
+    () => savedOrders.filter((o) => (o.serviceType || o.type) === "pickup").length,
+    [savedOrders]
+  );
 
-    if (timeFilter === "month") {
-      return (
-        orderDate.getMonth() === now.getMonth() &&
-        orderDate.getFullYear() === now.getFullYear()
-      );
-    }
+  const filteredOrders = useMemo(() => {
+    const rawKeyword = String(searchTerm || "").trim();
+    return savedOrders.filter((order) => {
+      // 1. Service type filter
+      if (activeFilter !== "all") {
+        const type = order.serviceType || order.type;
+        if (type !== activeFilter) return false;
+      }
 
-    if (timeFilter === "week") {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(now.getDate() - 7);
-      return orderDate >= sevenDaysAgo && orderDate <= now;
-    }
+      // 2. Status filter
+      if (statusFilter !== "all") {
+        const st = order.status || "pending";
+        if (statusFilter === "in_progress") {
+          if (!["pending", "confirmed", "preparing", "delivering"].includes(st)) return false;
+        } else if (statusFilter === "completed") {
+          if (st !== "completed") return false;
+        } else if (statusFilter === "cancelled") {
+          if (st !== "cancelled" && st !== "canceled") return false;
+        }
+      }
 
-    return true;
-  });
+      // 3. Time filter
+      if (timeFilter !== "all") {
+        const orderDate = parseDate(order.createdAt || order.date);
+        if (timeFilter === "month") {
+          if (
+            orderDate.getMonth() !== now.getMonth() ||
+            orderDate.getFullYear() !== now.getFullYear()
+          ) {
+            return false;
+          }
+        } else if (timeFilter === "week") {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(now.getDate() - 7);
+          if (orderDate < sevenDaysAgo || orderDate > now) {
+            return false;
+          }
+        }
+      }
+
+      // 4. Search query
+      if (rawKeyword) {
+        const foodNames = Array.isArray(order.cartItems)
+          ? order.cartItems.map((item) => item.name || "").join(" ")
+          : "";
+        const score = calculateSearchScore({
+          code: String(order.id || ""),
+          id: order.id,
+          phone: order.phone || "",
+          address: order.address || "",
+          notes: foodNames
+        }, rawKeyword);
+
+        if (score === 0) return false;
+      }
+
+      return true;
+    });
+  }, [savedOrders, activeFilter, statusFilter, timeFilter, searchTerm]);
+
+  const hasActiveFilters =
+    searchTerm.trim() !== "" ||
+    activeFilter !== "all" ||
+    statusFilter !== "all" ||
+    timeFilter !== "all";
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setActiveFilter("all");
+    setStatusFilter("all");
+    setTimeFilter("all");
+  };
 
   const paginatedOrders = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -169,83 +219,201 @@ export function OrderHistoryContent() {
   }, [filteredOrders, currentPage, pageSize]);
 
   return (
-    <div className="bg-white border border-[#eadfcd] rounded-[26px] shadow-sm p-5 md:p-6 text-left">
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl md:text-3xl font-black text-green-900">
-          Lịch sử đơn hàng
-        </h2>
+    <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm p-5 md:p-7 text-left space-y-5">
+      {/* Header & Filter Bar */}
+      <div className="space-y-3 pb-4 border-b border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#145c30] tracking-tight">
+              Lịch sử đơn hàng
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Theo dõi và quản lý các đơn đặt món của bạn
+            </p>
+          </div>
 
-        <select
-          value={timeFilter}
-          onChange={(e) => setTimeFilter(e.target.value)}
-          className="h-11 rounded-xl border border-[#eadfcd] px-4 outline-none text-sm font-bold text-green-900 bg-white"
-        >
-          <option value="all">Tất cả thời gian</option>
-          <option value="month">Tháng này</option>
-          <option value="week">Tuần này</option>
-        </select>
+          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+            Tổng số: <strong className="text-slate-900">{savedOrders.length}</strong> đơn hàng
+          </span>
+        </div>
+
+        {/* Unified Search & Filters */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm theo mã đơn (#123), tên món, địa chỉ..."
+              className="w-full h-10 pl-9 pr-8 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition placeholder:text-slate-400 font-medium"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Status Select */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition cursor-pointer flex-1 md:flex-none"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="in_progress">Đang xử lý / giao</option>
+              <option value="completed">Đã hoàn thành</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+
+            {/* Time Select */}
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition cursor-pointer flex-1 md:flex-none"
+            >
+              <option value="all">Tất cả thời gian</option>
+              <option value="month">Tháng này</option>
+              <option value="week">Tuần này</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Service Type Pills & Reset */}
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {[
+              { key: "all", label: "Tất cả", count: savedOrders.length },
+              { key: "delivery", label: "Giao tận nơi", count: deliveryCount },
+              { key: "pickup", label: "Đến lấy", count: pickupCount },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveFilter(tab.key)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  activeFilter === tab.key
+                    ? "bg-[#15803d] text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-md text-[10px] ${
+                    activeFilter === tab.key
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 cursor-pointer shrink-0"
+            >
+              <RotateCcw size={11} />
+              <span>Đặt lại</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-6 border-b border-[#eadfcd] mb-5 overflow-x-auto">
-        {[
-          { key: "all", label: "Tất cả đơn hàng" },
-          { key: "delivery", label: "Giao tận nơi" },
-          { key: "pickup", label: "Đến lấy tại quán" },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveFilter(tab.key)}
-            className={`pb-3 text-sm font-black whitespace-nowrap transition ${
-              activeFilter === tab.key
-                ? "text-green-900 border-b-2 border-green-900"
-                : "text-gray-500 hover:text-green-800"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
+      {/* Loading Skeleton State */}
       {loading && (
-        <div className="min-h-[220px] flex items-center justify-center text-green-800 font-black">
-          Đang tải lịch sử đơn hàng...
+        <div className="space-y-3 pt-1">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 space-y-3"
+            >
+              <div className="flex justify-between items-center">
+                <AppSkeleton type="title" className="w-32 h-4" />
+                <AppSkeleton type="badge" className="w-20 h-5" />
+              </div>
+              <div className="flex gap-3 items-center">
+                <AppSkeleton type="avatar" className="w-12 h-12 rounded-xl" />
+                <div className="space-y-1.5 flex-1">
+                  <AppSkeleton type="text" className="w-1/2" />
+                  <AppSkeleton type="text" className="w-1/3" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
+      {/* Error State */}
       {!loading && error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-red-600 font-bold">
-          {error}
+        <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 text-sm font-medium flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+          <span>{error}</span>
         </div>
       )}
 
-      {!loading && !error && filteredOrders.length === 0 ? (
-        <div className="min-h-[260px] flex items-center justify-center text-gray-500 font-bold">
-          Không có đơn hàng phù hợp.
-        </div>
-      ) : null}
+      {/* Empty State */}
+      {!loading && !error && filteredOrders.length === 0 && (
+        <AppEmptyState
+          icon={ReceiptText}
+          title={
+            hasActiveFilters
+              ? "Không tìm thấy đơn hàng phù hợp"
+              : "Bạn chưa có đơn đặt món nào"
+          }
+          description={
+            hasActiveFilters
+              ? "Thử thay đổi từ khóa tìm kiếm hoặc đặt lại bộ lọc."
+              : "Khám phá các món ăn hấp dẫn và đặt món ngay hôm nay!"
+          }
+          actionText={hasActiveFilters ? "Xóa bộ lọc tìm kiếm" : "Khám phá thực đơn"}
+          onAction={hasActiveFilters ? handleResetFilters : () => navigate("/menu")}
+          className="py-10"
+        />
+      )}
 
+      {/* Order Cards List */}
       {!loading && !error && filteredOrders.length > 0 && (
         <div className="space-y-3">
           {paginatedOrders.map((order, index) => (
             <OrderCard key={`${order.id}-${index}`} order={order} />
           ))}
-          
-          <div className="mt-5 pt-4 border-t border-gray-100">
-            <GlobalPagination
-              total={filteredOrders.length}
-              page={currentPage}
-              limit={pageSize}
-              onPageChange={setCurrentPage}
-              onLimitChange={setPageSize}
-              limitOptions={[5, 10, 20, 50]}
-            />
-          </div>
+
+          {filteredOrders.length > pageSize && (
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <GlobalPagination
+                total={filteredOrders.length}
+                page={currentPage}
+                limit={pageSize}
+                onPageChange={setCurrentPage}
+                onLimitChange={setPageSize}
+                limitOptions={[5, 10, 20]}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
+/* ==========================================================================
+   SINGLE ORDER CARD COMPONENT
+   ========================================================================== */
 export function OrderCard({ order }) {
   const navigate = useNavigate();
   const [reviewItem, setReviewItem] = useState(null);
@@ -262,9 +430,9 @@ export function OrderCard({ order }) {
 
   const paymentLabel = {
     cash: "Tiền mặt",
-    bank: "Ngân hàng",
+    bank: "VietQR",
     momo: "MoMo",
-    pay_after_meal: "Thanh toán sau bữa ăn",
+    pay_after_meal: "Thanh toán sau",
   };
 
   const getPaymentMethodText = (o) => {
@@ -276,13 +444,13 @@ export function OrderCard({ order }) {
       "";
     if (paymentLabel[method]) return paymentLabel[method];
     if (method) return method;
-    if (o.paymentContent) return "Ngân hàng";
+    if (o.paymentContent) return "VietQR";
     if (o.paymentStatus === "unpaid") return "Tiền mặt";
-    return "Chưa xác định";
+    return "Tiền mặt";
   };
 
   const formatTime = (value) => {
-    if (!value) return "Chưa có giờ";
+    if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleTimeString("vi-VN", {
@@ -291,12 +459,12 @@ export function OrderCard({ order }) {
     });
   };
 
-  const paymentStatusLabel = {
-    pending_payment: "Chờ chọn thanh toán",
-    unpaid: "Chưa thanh toán",
-    pending: "Chờ thanh toán",
-    paid_pending_confirm: "Đã thanh toán",
-    paid: "Đã thanh toán",
+  const formatDate = (value) => {
+    if (!value) return "Chưa có ngày";
+    if (String(value).includes("/")) return value;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("vi-VN");
   };
 
   const statusLabel = {
@@ -309,77 +477,33 @@ export function OrderCard({ order }) {
     canceled: "Đã hủy",
   };
 
-  const orderStatus =
-    statusLabel[order.status] ||
+  const statusKey = order.status || "pending";
+  const orderStatusText =
+    statusLabel[statusKey] ||
     (order.status === "Chờ chọn phương thức thanh toán"
       ? "Chờ xác nhận"
       : order.status || "Chờ xác nhận");
 
-  const paymentStatus =
-    paymentStatusLabel[order.paymentStatus] ||
-    order.paymentStatus ||
-    (order.paymentMethod === "cash" ? "Chưa thanh toán" : "Chờ xác nhận");
-
-  const statusClass =
-    orderStatus === "Đã hủy"
-      ? "bg-red-50 text-red-500"
-      : orderStatus === "Đang giao"
-        ? "bg-orange-50 text-orange-600"
-        : orderStatus === "Đang chuẩn bị"
-          ? "bg-purple-50 text-purple-600"
-          : orderStatus === "Đã xác nhận"
-            ? "bg-blue-50 text-blue-600"
-            : orderStatus === "Chờ xác nhận"
-              ? "bg-yellow-50 text-yellow-700"
-              : "bg-green-50 text-green-700";
-
-  const paymentStatusClass =
-    paymentStatus === "Đã thanh toán"
-      ? "text-green-700"
-      : paymentStatus === "Chưa thanh toán"
-        ? "text-red-500"
-        : "text-orange-500";
+  const paymentStatus = order.paymentStatus || "unpaid";
+  const isPaid = paymentStatus === "paid" || paymentStatus === "paid_pending_confirm";
 
   const formatPrice = (price) => {
     return Number(price || 0).toLocaleString("vi-VN") + "đ";
   };
 
-  const formatDate = (value) => {
-    if (!value) return "Chưa có ngày";
-    if (String(value).includes("/")) return value;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString("vi-VN");
-  };
-
-  const itemImages =
-    order.images ||
-    order.cartItems?.map((item) => item.image).filter(Boolean) ||
-    [];
-
+  const items = Array.isArray(order.cartItems) ? order.cartItems : [];
   const totalQty =
-    order.cartItems?.reduce((sum, item) => sum + Number(item.qty || 1), 0) ||
+    items.reduce((sum, item) => sum + Number(item.qty || 1), 0) ||
     order.qty ||
     0;
 
-  const extraCount = Math.max(
-    (order.cartItems?.length || itemImages.length) - 4,
-    0,
-  );
-
-  const reviewItems = Array.isArray(order.cartItems) ? order.cartItems : [];
-  const visibleReviewItems = reviewItems.slice(0, 4);
-  const hiddenReviewCount = Math.max(
-    reviewItems.length - visibleReviewItems.length,
-    0,
-  );
-
+  const reviewItems = items;
   const currentUser =
     JSON.parse(localStorage.getItem("currentUser")) ||
     JSON.parse(sessionStorage.getItem("currentUser")) ||
     {};
 
-  const canReviewOrder = orderStatus === "Hoàn thành";
+  const canReviewOrder = statusKey === "completed";
 
   const submitFoodReview = async () => {
     if (!reviewItem) return;
@@ -398,311 +522,326 @@ export function OrderCard({ order }) {
             rating: reviewRating,
             comment: reviewComment,
           }),
-        },
+        }
       );
       const result = await res.json();
 
       if (!result.success) {
-        alert(result.message || "Đánh giá thất bại");
+        showAdminToast({
+          title: "Đánh giá thất bại",
+          message: result.message || "Không thể gửi đánh giá.",
+          type: "error",
+        });
         return;
       }
 
-      alert("Đánh giá món ăn thành công");
+      showAdminToast({
+        title: "Thành công",
+        message: "Đánh giá món ăn thành công!",
+        type: "success",
+      });
       setReviewedIds((prev) => [...prev, reviewItem.id]);
       setReviewItem(null);
       setReviewRating(5);
       setReviewComment("");
     } catch (err) {
       console.error("Lỗi gửi đánh giá:", err);
-      alert("Không thể kết nối backend");
+      showAdminToast({
+        title: "Lỗi kết nối",
+        message: "Không thể kết nối máy chủ",
+        type: "error",
+      });
     }
   };
 
+  // Preview names
+  const itemNamesSummary = items.length > 0
+    ? items.map((i) => {
+        const opt = i.priceOptionNote || i.price_option_note ? ` - ${i.priceOptionNote || i.price_option_note}` : "";
+        return `${i.name}${opt} (x${i.qty || 1})`;
+      }).join(", ")
+    : `Đơn đặt món (${totalQty} món)`;
+
   return (
-    <div className="border border-[#eadfcd] rounded-3xl bg-white p-4 md:p-5 hover:shadow-md transition text-left">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-4 border-b border-[#f1e7d7]">
-        <div>
-          <p className="font-black text-green-900 text-lg">
-            #{order.id || "Chưa có mã"}
-          </p>
-          <p className="text-sm text-gray-500 mt-1">
-            {formatDate(order.createdAt)} - {formatTime(order.createdAt)} •{" "}
-            {totalQty} món
-          </p>
+    <div className="border border-slate-200/90 rounded-2xl p-4 sm:p-5 bg-white hover:border-emerald-300 hover:shadow-sm transition-all text-left space-y-3.5">
+      {/* 1. Top Meta Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-extrabold text-[#145c30] text-sm sm:text-base">
+            #{order.id}
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-[#15803d]">
+            {serviceLabel[order.serviceType] || "Đơn hàng"}
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="text-xs text-slate-500 font-medium">
+            {formatDate(order.createdAt)}
+            {formatTime(order.createdAt) && `, ${formatTime(order.createdAt)}`}
+          </span>
         </div>
-        <span
-          className={`w-fit px-4 py-2 rounded-full text-sm font-black ${statusClass}`}
-        >
-          {orderStatus}
-        </span>
+
+        {/* Badges */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <AppBadge status={isPaid ? "paid" : "unpaid"} size="sm" dot>
+            {isPaid ? "Đã thanh toán" : "Chưa thanh toán"}
+          </AppBadge>
+          <AppBadge status={statusKey} size="sm" dot>
+            {orderStatusText}
+          </AppBadge>
+        </div>
       </div>
 
-      <div className="grid lg:grid-cols-[220px_1fr_210px_auto] gap-5 items-center pt-4">
-        <div className="flex items-center">
-          <div className="flex -space-x-2">
-            {itemImages.length > 0 ? (
-              itemImages
-                .slice(0, 4)
-                .map((img, index) => (
-                  <img
-                    key={index}
-                    src={img}
-                    alt=""
-                    className="w-14 h-14 rounded-xl object-cover border-2 border-white"
-                  />
-                ))
-            ) : (
-              <div className="w-14 h-14 rounded-xl bg-[#fbf0dc] text-[#b88935] flex items-center justify-center border-2 border-white">
-                <ReceiptText size={24} />
+      {/* 2. Middle Content: Compact Dish Preview & Context */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Left: Thumbnail & Dish names summary */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Dish Thumbnails */}
+          <div className="flex -space-x-2 shrink-0">
+            {items.slice(0, 3).map((item, idx) => (
+              <img
+                key={idx}
+                src={item.image || "/images/placeholder.jpg"}
+                alt={item.name}
+                className="w-10 h-10 rounded-xl object-cover border-2 border-white bg-slate-100 shadow-2xs"
+              />
+            ))}
+            {items.length === 0 && (
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center border-2 border-white">
+                <Utensils size={16} />
               </div>
             )}
           </div>
 
-          {extraCount > 0 && (
-            <span className="ml-3 w-10 h-10 rounded-full bg-[#fbf0dc] text-[#b88935] flex items-center justify-center text-sm font-black">
-              +{extraCount}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-bold text-slate-800 line-clamp-1" title={itemNamesSummary}>
+              {itemNamesSummary}
+            </p>
+            <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+              {order.serviceType === "delivery" && order.address && (
+                <span className="inline-flex items-center gap-1 truncate max-w-[220px]" title={order.address}>
+                  <MapPin size={11} className="text-[#15803d] shrink-0" />
+                  <span className="truncate">{order.address}</span>
+                </span>
+              )}
+              {order.serviceType === "dinein" && (
+                <span className="inline-flex items-center gap-1">
+                  <Store size={11} className="text-[#15803d] shrink-0" />
+                  <span>Bàn: {order.table || "Nhà hàng xếp bàn"}</span>
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1">
+                <CreditCard size={11} className="text-slate-400 shrink-0" />
+                <span>{getPaymentMethodText(order)}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Total Price & Actions */}
+        <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+          <div className="text-left sm:text-right">
+            <span className="text-[10px] text-slate-400 block font-semibold uppercase">Tổng tiền</span>
+            <span className="text-sm sm:text-base font-black text-[#145c30]">
+              {formatPrice(order.total || order.totalPrice)}
             </span>
-          )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {canReviewOrder && reviewItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsReviewListOpen(true)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/80 hover:bg-amber-100 transition cursor-pointer"
+              >
+                <MessageSquarePlus size={13} />
+                <span>Đánh giá</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => navigate(`/profile/order-detail/${order.id}`)}
+              className="inline-flex items-center justify-center gap-1 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-[#15803d] text-white hover:bg-[#145c30] shadow-2xs hover:shadow transition cursor-pointer"
+            >
+              <span>Chi tiết</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
-
-        <div>
-          <p className="font-black text-green-900 text-lg">
-            {serviceLabel[order.serviceType] || "Chưa xác định"}
-          </p>
-
-          {order.serviceType === "dinein" && (
-            <p className="text-sm text-gray-500 mt-1">
-              {order.table || "Nhà hàng sắp xếp"} •{" "}
-              {order.guests || "Chưa cập nhật"} người
-            </p>
-          )}
-
-          {order.serviceType === "delivery" && (
-            <p className="text-sm text-gray-500 mt-1 line-clamp-1">
-              {order.address || "Chưa có địa chỉ giao hàng"}
-            </p>
-          )}
-
-          {order.serviceType === "pickup" && (
-            <p className="text-sm text-gray-500 mt-1">
-              Người nhận: {order.receiver || order.name || "Chưa cập nhật"}
-            </p>
-          )}
-
-          <p className="mt-2 inline-flex items-center gap-2 text-xs font-black text-green-800 bg-green-50 border border-green-100 px-3 py-1 rounded-full">
-            <CreditCard size={14} />
-            {getPaymentMethodText(order)}
-          </p>
-        </div>
-
-        <div>
-          <p className="text-xs text-gray-500 uppercase font-bold">Tổng tiền</p>
-          <p className="text-2xl font-black text-green-900">
-            {formatPrice(order.total)}
-          </p>
-          <p className={`text-sm font-black mt-1 ${paymentStatusClass}`}>
-            {paymentStatus}
-          </p>
-
-          {order.paymentContent && (
-            <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-              CK: <b>{order.paymentContent}</b>
-            </p>
-          )}
-        </div>
-
-        <button
-          onClick={() => navigate(`/profile/order-detail/${order.id}`)}
-          className="h-11 px-5 rounded-xl border border-[#eadfcd] font-black text-green-900 hover:bg-green-50 whitespace-nowrap"
-        >
-          Chi tiết →
-        </button>
       </div>
 
-      {canReviewOrder && reviewItems.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setIsReviewListOpen(true)}
-          className="mt-4 w-full rounded-2xl border border-[#eadfcd] bg-[#fffdf8] px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-green-50/40 hover:border-green-100 transition text-left"
-        >
-          <div>
-            <p className="font-black text-green-900">
-              Đánh giá món trong đơn hàng
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Nhấn để chọn món bạn muốn đánh giá.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {visibleReviewItems.map((item, index) => (
-                <img
-                  key={`${item.id || item.name}-${index}`}
-                  src={item.image}
-                  alt={item.name}
-                  className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-sm"
-                />
-              ))}
-            </div>
-            {hiddenReviewCount > 0 && (
-              <span className="w-10 h-10 rounded-full bg-[#fbf0dc] text-[#b88935] flex items-center justify-center text-sm font-black">
-                +{hiddenReviewCount}
-              </span>
-            )}
-          </div>
-        </button>
-      )}
-
+      {/* Review Dishes Selector Modal */}
       {isReviewListOpen && (
         <div
-          className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center px-4"
+          className="fixed inset-0 z-[9998] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
           onClick={() => setIsReviewListOpen(false)}
         >
           <div
-            className="w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b border-[#eadfcd] flex items-center justify-between gap-4 text-left">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-2xl font-black text-green-900">
-                  Chọn món để đánh giá
+                <h3 className="text-lg font-extrabold text-slate-900">
+                  Chọn món ăn để đánh giá
                 </h3>
-                <p className="text-sm text-gray-500 font-bold mt-1">
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
                   Đơn hàng #{order.id}
                 </p>
               </div>
               <button
                 onClick={() => setIsReviewListOpen(false)}
-                className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500"
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                ×
+                <X size={16} />
               </button>
             </div>
 
-            <div className="p-5 max-h-[65vh] overflow-y-auto">
-              <div className="grid md:grid-cols-2 gap-3">
-                {reviewItems.map((item, index) => {
-                  const itemId = item.id || item.code || item.name;
-                  const reviewed = reviewedIds.includes(itemId);
+            <div className="p-5 max-h-[60vh] overflow-y-auto space-y-3">
+              {reviewItems.map((item, index) => {
+                const itemId = item.id || item.code || item.name;
+                const reviewed = reviewedIds.includes(itemId);
 
-                  return (
-                    <div
-                      key={`${itemId}-${index}`}
-                      className="rounded-2xl border border-[#eadfcd] p-3 flex items-center gap-3 bg-white hover:bg-[#fffaf0] transition text-left"
-                    >
+                return (
+                  <div
+                    key={`${itemId}-${index}`}
+                    className="rounded-2xl border border-slate-200/80 p-3.5 flex items-center justify-between gap-3 bg-white hover:bg-slate-50/70 transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={item.image}
                         alt={item.name}
-                        className="w-16 h-16 rounded-xl object-cover bg-gray-100"
+                        className="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                       />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black text-green-900 line-clamp-1">
+                      <div className="min-w-0">
+                        <p className="font-extrabold text-slate-900 text-sm truncate">
                           {item.name}
                         </p>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-xs text-slate-500 mt-0.5">
                           Số lượng: {item.qty || 1}
                         </p>
                       </div>
-                      <button
-                        disabled={reviewed}
-                        onClick={() => {
-                          setReviewItem({
-                            id: item.id || item.code,
-                            name: item.name,
-                            image: item.image,
-                          });
-                          setReviewRating(5);
-                          setReviewComment("");
-                          setIsReviewListOpen(false);
-                        }}
-                        className={`h-10 px-4 rounded-xl text-sm font-black whitespace-nowrap ${
-                          reviewed
-                            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                            : "bg-[#d6a84f] text-green-955 hover:bg-[#c99a45]"
-                        }`}
-                      >
-                        {reviewed ? "Đã đánh giá" : "Đánh giá"}
-                      </button>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <AppButton
+                      variant={reviewed ? "outline" : "primary"}
+                      size="sm"
+                      disabled={reviewed}
+                      onClick={() => {
+                        setReviewItem({
+                          id: item.id || item.code,
+                          name: item.name,
+                          image: item.image,
+                        });
+                        setReviewRating(5);
+                        setReviewComment("");
+                        setIsReviewListOpen(false);
+                      }}
+                    >
+                      {reviewed ? "Đã đánh giá" : "Đánh giá ngay"}
+                    </AppButton>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
+      {/* Review Comment Form Modal */}
       {reviewItem && (
-        <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center px-4">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-5 text-left">
-            <div className="flex items-center justify-between gap-4 border-b border-[#eadfcd] pb-4">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 text-left animate-scale-in">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <img
                   src={reviewItem.image}
                   alt={reviewItem.name}
-                  className="w-14 h-14 rounded-xl object-cover bg-gray-100"
+                  className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                 />
                 <div>
-                  <h3 className="text-2xl font-black text-green-900">
+                  <h3 className="text-base font-extrabold text-slate-900">
                     Đánh giá món ăn
                   </h3>
-                  <p className="text-sm text-gray-500 font-bold mt-1">
+                  <p className="text-xs text-slate-500 font-medium truncate max-w-[240px]">
                     {reviewItem.name}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setReviewItem(null)}
-                className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500"
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                ×
+                <X size={16} />
               </button>
             </div>
 
             <div className="py-5 space-y-4">
               <div>
-                <p className="font-black text-green-900 mb-2">Số sao</p>
+                <span className="block text-xs font-bold text-slate-700 mb-2">
+                  Đánh giá của bạn
+                </span>
                 <div className="flex items-center gap-2">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       type="button"
                       onClick={() => setReviewRating(star)}
-                      className={`text-3xl ${
-                        star <= reviewRating ? "text-[#d6a84f]" : "text-gray-300"
-                      }`}
+                      className="p-1 hover:scale-110 transition cursor-pointer"
                     >
-                      ★
+                      <Star
+                        size={28}
+                        className={
+                          star <= reviewRating
+                            ? "fill-amber-400 text-amber-400"
+                            : "fill-slate-100 text-slate-300"
+                        }
+                      />
                     </button>
                   ))}
+                  <span className="ml-2 text-xs font-bold text-amber-700">
+                    {reviewRating === 5
+                      ? "Tuyệt vời"
+                      : reviewRating === 4
+                      ? "Rất ngon"
+                      : reviewRating === 3
+                      ? "Bình thường"
+                      : reviewRating === 2
+                      ? "Chưa hài lòng"
+                      : "Không hài lòng"}
+                  </span>
                 </div>
               </div>
 
-              <label className="block">
-                <span className="font-black text-green-900">Nhận xét</span>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Nhận xét chi tiết
+                </label>
                 <textarea
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Món ăn như thế nào?"
-                  className="mt-2 w-full h-28 rounded-xl border border-[#eadfcd] px-4 py-3 outline-none resize-none bg-white"
+                  placeholder="Món ăn có hợp khẩu vị của bạn không? Chia sẻ cảm nhận để quán phục vụ tốt hơn..."
+                  className="w-full h-24 rounded-xl border border-slate-200 p-3 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/10 transition resize-none"
                 />
-              </label>
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-[#eadfcd] pt-4">
-              <button
+            <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+              <AppButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setReviewItem(null)}
-                className="h-11 px-5 rounded-xl bg-gray-100 text-gray-600 font-black"
               >
                 Hủy
-              </button>
-              <button
+              </AppButton>
+              <AppButton
+                variant="primary"
+                size="sm"
                 onClick={submitFoodReview}
-                className="h-11 px-6 rounded-xl bg-green-800 text-white font-black hover:bg-green-900"
               >
                 Gửi đánh giá
-              </button>
+              </AppButton>
             </div>
           </div>
         </div>
@@ -711,13 +850,23 @@ export function OrderCard({ order }) {
   );
 }
 
+/* ==========================================================================
+   BOOKING HISTORY CONTENT
+   ========================================================================== */
 export function BookingHistoryContent() {
   const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [timeFilter, setTimeFilter] = useState("all");
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, timeFilter]);
 
   const loadMyBookings = async () => {
     const token = getAuthToken();
@@ -765,14 +914,17 @@ export function BookingHistoryContent() {
 
   const formatBookingDate = (value) => {
     if (!value) return "Chưa có ngày";
-    if (String(value).includes("/")) return value;
+    if (String(value).includes("/") && String(value).split("/")[0].length === 2) return value;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString("vi-VN");
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   const formatBookingTime = (value) => {
-    if (!value) return "Chưa có giờ";
+    if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleTimeString("vi-VN", {
@@ -781,172 +933,532 @@ export function BookingHistoryContent() {
     });
   };
 
+  const getBookingStatusText = (status) => {
+    switch (status) {
+      case "confirmed":
+        return "Đã xác nhận";
+      case "serving":
+        return "Đang phục vụ";
+      case "completed":
+        return "Hoàn thành";
+      case "cancelled":
+      case "canceled":
+        return "Đã hủy";
+      default:
+        return "Chờ xác nhận";
+    }
+  };
+
+  const parseBookingDate = (dateString) => {
+    if (!dateString) return new Date(0);
+    if (String(dateString).includes("/")) {
+      const [day, month, year] = dateString.split("/");
+      return new Date(`${year}-${month}-${day}`);
+    }
+    return new Date(dateString);
+  };
+
+  const now = new Date();
+
+  const filteredBookings = useMemo(() => {
+    return bookings.filter((booking) => {
+      // 1. Status Filter
+      if (statusFilter !== "all") {
+        const st = booking.status || "pending";
+        if (statusFilter === "in_progress") {
+          if (!["pending", "confirmed", "serving"].includes(st)) return false;
+        } else if (statusFilter === "completed") {
+          if (st !== "completed") return false;
+        } else if (statusFilter === "cancelled") {
+          if (st !== "cancelled" && st !== "canceled") return false;
+        }
+      }
+
+      // 2. Time Filter
+      if (timeFilter !== "all") {
+        const bDate = parseBookingDate(booking.date || booking.createdAt);
+        if (timeFilter === "month") {
+          if (
+            bDate.getMonth() !== now.getMonth() ||
+            bDate.getFullYear() !== now.getFullYear()
+          ) {
+            return false;
+          }
+        } else if (timeFilter === "week") {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(now.getDate() - 7);
+          if (bDate < sevenDaysAgo || bDate > now) {
+            return false;
+          }
+        }
+      }
+
+      // 3. Search query
+      const rawKeyword = String(searchTerm || "").trim();
+      if (rawKeyword) {
+        const score = calculateSearchScore({
+          code: String(booking.id || ""),
+          id: booking.id,
+          tableName: booking.selectedTable || "",
+          area: booking.selectedAreaTitle || "",
+          notes: `${booking.notes || ""} ${booking.guests || booking.people || ""}`
+        }, rawKeyword);
+
+        if (score === 0) return false;
+      }
+
+      return true;
+    });
+  }, [bookings, statusFilter, timeFilter, searchTerm]);
+
+  const hasActiveFilters =
+    searchTerm.trim() !== "" ||
+    statusFilter !== "all" ||
+    timeFilter !== "all";
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setTimeFilter("all");
+  };
+
   const paginatedBookings = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return bookings.slice(start, start + pageSize);
-  }, [bookings, currentPage, pageSize]);
+    return filteredBookings.slice(start, start + pageSize);
+  }, [filteredBookings, currentPage, pageSize]);
 
   return (
-    <div className="bg-white border border-[#eadfcd] rounded-[26px] shadow-sm p-5 md:p-6 text-left">
-      <h2 className="text-2xl md:text-3xl font-black text-green-900">
-        Lịch đặt bàn
-      </h2>
-      <p className="text-sm text-gray-500 mt-1 mb-6">
-        Theo dõi các bàn bạn đã đặt tại Dê Hương Sơn.
-      </p>
-
-      {loading && (
-        <div className="min-h-[260px] flex items-center justify-center text-green-800 font-black">
-          Đang tải lịch đặt bàn...
-        </div>
-      )}
-
-      {!loading && error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-red-600 font-bold">
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && bookings.length === 0 ? (
-        <div className="min-h-[330px] flex flex-col items-center justify-center text-center">
-          <div className="w-20 h-20 rounded-full bg-[#fbf0dc] flex items-center justify-center mb-4">
-            <CalendarDays className="w-10 h-10 text-[#c99a45]" />
+    <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm p-5 md:p-7 text-left space-y-5">
+      {/* Header & Filter Bar */}
+      <div className="space-y-3 pb-4 border-b border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#145c30] tracking-tight">
+              Lịch đặt bàn của tôi
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Theo dõi bàn đã đặt, thời gian hẹn và thông tin tiếp đón
+            </p>
           </div>
-          <h3 className="text-xl font-black text-green-900">
-            Chưa có lịch đặt bàn
-          </h3>
-          <p className="text-gray-500 text-sm mt-2">
-            Khi bạn đặt bàn, thông tin sẽ hiển thị tại đây.
-          </p>
-        </div>
-      ) : null}
 
-      {!loading && !error && bookings.length > 0 && (
-        <div className="space-y-4">
-          {paginatedBookings.map((booking) => (
-            <div
-              key={booking.id}
-              className="border border-[#eadfcd] rounded-2xl p-4 grid md:grid-cols-[1fr_180px_130px] gap-4 items-center text-left"
+          <div className="flex items-center gap-2.5 self-start sm:self-auto">
+            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">
+              Tổng số: <strong className="text-slate-900">{bookings.length}</strong> lượt đặt
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate("/booking")}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#15803d] text-white hover:bg-[#145c30] shadow-2xs hover:shadow transition cursor-pointer"
             >
-              <div>
-                <p className="font-black text-green-900">
-                  Bàn {booking.selectedTable || "chưa chọn"} -{" "}
-                  {booking.selectedAreaTitle || "Nhà hàng sắp xếp"}
-                </p>
-                <p className="text-sm text-gray-500 mt-2">
-                  {formatBookingDate(booking.date)} -{" "}
-                  {formatBookingTime(booking.time)}
-                </p>
-                <p className="text-sm text-gray-500">
-                  Số khách: {booking.guests || booking.people || "Chưa cập nhật"}
-                </p>
-              </div>
+              <CalendarDays size={14} />
+              <span>Đặt bàn mới</span>
+            </button>
+          </div>
+        </div>
 
-              <span
-                className={`w-fit px-4 py-2 rounded-full font-black text-sm ${getBookingStatusStyle(
-                  booking.status,
-                )}`}
-              >
-                {getBookingStatusText(booking.status)}
-              </span>
-
+        {/* Unified Search & Filters */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search
+              size={16}
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm theo mã đặt bàn (#123), số bàn, khu vực..."
+              className="w-full h-10 pl-9 pr-8 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-800 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition placeholder:text-slate-400 font-medium"
+            />
+            {searchTerm && (
               <button
-                onClick={() => navigate(`/profile/booking-detail/${booking.id}`)}
-                className="h-11 rounded-xl border border-[#eadfcd] font-black text-green-900 hover:bg-green-50"
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
               >
-                Chi tiết →
+                <X size={14} />
               </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Status Select */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition cursor-pointer flex-1 md:flex-none"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="in_progress">Chờ / Đang phục vụ</option>
+              <option value="completed">Đã hoàn thành</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+
+            {/* Time Select */}
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50/70 hover:bg-white focus:bg-white focus:border-emerald-700 outline-none transition cursor-pointer flex-1 md:flex-none"
+            >
+              <option value="all">Tất cả thời gian</option>
+              <option value="month">Tháng này</option>
+              <option value="week">Tuần này</option>
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 cursor-pointer shrink-0 pl-1"
+              >
+                <RotateCcw size={12} />
+                <span>Đặt lại</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Loading Skeleton */}
+      {loading && (
+        <div className="space-y-3 pt-1">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 flex justify-between items-center"
+            >
+              <div className="space-y-1.5 flex-1">
+                <AppSkeleton type="title" className="w-48 h-4" />
+                <AppSkeleton type="text" className="w-1/3" />
+              </div>
+              <AppSkeleton type="badge" className="w-20 h-5" />
             </div>
           ))}
-          
-          <div className="mt-5 pt-4 border-t border-gray-100">
-            <GlobalPagination
-              total={bookings.length}
-              page={currentPage}
-              limit={pageSize}
-              onPageChange={setCurrentPage}
-              onLimitChange={setPageSize}
-              limitOptions={[5, 10, 20, 50]}
-            />
-          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <div className="p-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 text-sm font-medium flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && !error && filteredBookings.length === 0 && (
+        <AppEmptyState
+          icon={CalendarDays}
+          title={
+            hasActiveFilters
+              ? "Không tìm thấy lịch đặt bàn phù hợp"
+              : "Chưa có lịch đặt bàn nào"
+          }
+          description={
+            hasActiveFilters
+              ? "Thử thay đổi từ khóa tìm kiếm hoặc đặt lại bộ lọc."
+              : "Hãy đặt bàn trước để được giữ chỗ đẹp và phục vụ chu đáo nhất."
+          }
+          actionText={hasActiveFilters ? "Xóa bộ lọc tìm kiếm" : "Đặt bàn trực tuyến ngay"}
+          onAction={hasActiveFilters ? handleResetFilters : () => navigate("/booking")}
+          className="py-10"
+        />
+      )}
+
+      {/* Bookings List */}
+      {!loading && !error && filteredBookings.length > 0 && (
+        <div className="space-y-3">
+          {paginatedBookings.map((booking) => {
+            const statusKey = booking.status || "pending";
+
+            return (
+              <div
+                key={booking.id}
+                className="border border-slate-200/90 rounded-2xl p-4 sm:p-5 bg-white hover:border-emerald-300 hover:shadow-sm transition-all text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#15803d] border border-emerald-100 flex items-center justify-center shrink-0">
+                    <CalendarDays size={18} />
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-[#145c30] text-sm sm:text-base">
+                        #{booking.id}
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="font-bold text-slate-800 text-xs sm:text-sm">
+                        Bàn: {booking.selectedTable || "Tự động xếp"}
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600">
+                        {booking.selectedAreaTitle || "Khu vực chung"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 flex-wrap font-medium">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={12} className="text-slate-400 shrink-0" />
+                        <span>
+                          {formatBookingDate(booking.date)} {booking.time && `lúc ${formatBookingTime(booking.time)}`}
+                        </span>
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <User size={12} className="text-slate-400 shrink-0" />
+                        <span>{booking.guests || booking.people || 2} khách</span>
+                      </span>
+                      {booking.notes && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-400 italic truncate max-w-[200px]" title={booking.notes}>
+                            Ghi chú: {booking.notes}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                  <AppBadge status={statusKey} size="sm" dot>
+                    {getBookingStatusText(statusKey)}
+                  </AppBadge>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/profile/booking-detail/${booking.id}`)}
+                    className="inline-flex items-center justify-center gap-1 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-[#15803d] text-white hover:bg-[#145c30] shadow-2xs hover:shadow transition cursor-pointer"
+                  >
+                    <span>Chi tiết</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredBookings.length > pageSize && (
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <GlobalPagination
+                total={filteredBookings.length}
+                page={currentPage}
+                limit={pageSize}
+                onPageChange={setCurrentPage}
+                onLimitChange={setPageSize}
+                limitOptions={[5, 10, 20]}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
+/* ==========================================================================
+   CART CONTENT
+   ========================================================================== */
 export function CartContent() {
   const navigate = useNavigate();
-  const cartItems = JSON.parse(localStorage.getItem("cartItems")) || [];
-  const totalQty = cartItems.reduce((sum, item) => sum + item.qty, 0);
-  const totalPrice = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const [cartItems, setCartItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem("cartItems");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const syncCart = () => {
+    try {
+      const saved = localStorage.getItem("cartItems");
+      setCartItems(saved ? JSON.parse(saved) : []);
+    } catch {
+      setCartItems([]);
+    }
+  };
+
+  useEffect(() => {
+    syncCart();
+    window.addEventListener("cartUpdated", syncCart);
+    return () => {
+      window.removeEventListener("cartUpdated", syncCart);
+    };
+  }, []);
+
+  const updateQty = (id, delta) => {
+    const updated = cartItems
+      .map((item) => {
+        if (item.id === id) {
+          const nextQty = (item.qty || 1) + delta;
+          return nextQty > 0 ? { ...item, qty: nextQty } : null;
+        }
+        return item;
+      })
+      .filter(Boolean);
+
+    localStorage.setItem("cartItems", JSON.stringify(updated));
+    setCartItems(updated);
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const removeItem = (id) => {
+    const updated = cartItems.filter((item) => item.id !== id);
+    localStorage.setItem("cartItems", JSON.stringify(updated));
+    setCartItems(updated);
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const clearAll = () => {
+    localStorage.removeItem("cartItems");
+    setCartItems([]);
+    window.dispatchEvent(new Event("cartUpdated"));
+  };
+
+  const totalQty = cartItems.reduce((sum, item) => sum + (item.qty || 1), 0);
+  const totalPrice = cartItems.reduce(
+    (sum, item) => sum + (item.price || 0) * (item.qty || 1),
+    0
+  );
 
   return (
-    <div className="bg-white border border-[#eadfcd] rounded-[26px] shadow-sm p-5 md:p-6 text-left">
-      <div className="grid lg:grid-cols-[1fr_260px_auto] gap-4 items-center mb-6">
+    <div className="bg-white border border-slate-200/80 rounded-3xl shadow-sm p-5 md:p-7 text-left space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
         <div>
-          <h2 className="text-2xl md:text-3xl font-black text-green-900">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-[#145c30] tracking-tight">
             Giỏ hàng của tôi
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Hiện có {totalQty} món trong giỏ hàng.
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Bạn đang có <strong className="text-slate-800 font-bold">{totalQty} món</strong> trong giỏ hàng
           </p>
         </div>
 
-        <div className="bg-[#fbf7ec] border border-[#eadfcd] rounded-2xl px-5 py-3 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-[0.18em] font-bold">
-            Tổng tiền
-          </p>
-          <p className="text-2xl font-black text-[#c99a45] mt-1">
-            {totalPrice.toLocaleString("vi-VN")}đ
-          </p>
-        </div>
-
-        <button
-          onClick={() => navigate("/cart")}
-          className="h-12 px-7 rounded-2xl bg-[#d6a84f] hover:bg-[#c99a45] text-green-955 font-black transition whitespace-nowrap"
-        >
-          Xem chi tiết
-        </button>
+        {cartItems.length > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 cursor-pointer self-start sm:self-auto"
+          >
+            <Trash2 size={13} />
+            <span>Xóa tất cả</span>
+          </button>
+        )}
       </div>
 
+      {/* Empty State */}
       {cartItems.length === 0 ? (
-        <div className="min-h-[300px] flex flex-col items-center justify-center text-center">
-          <ShoppingCart className="w-16 h-16 text-[#c99a45]" />
-          <h3 className="mt-4 text-xl font-black text-green-900">
-            Giỏ hàng đang trống
-          </h3>
-          <p className="text-gray-500 mt-2">
-            Hãy thêm món ăn yêu thích vào giỏ hàng.
-          </p>
-        </div>
+        <AppEmptyState
+          icon={ShoppingCart}
+          title="Giỏ hàng của bạn đang trống"
+          description="Hãy khám phá các món ngon đặc sản núi rừng Hương Sơn và thêm vào giỏ hàng ngay nhé."
+          actionText="Khám phá thực đơn ngay"
+          onAction={() => navigate("/menu")}
+          className="py-10"
+        />
       ) : (
-        <div
-          className={`space-y-4 ${
-            cartItems.length > 5 ? "max-h-[480px] overflow-y-auto pr-2" : ""
-          }`}
-        >
+        <div className="space-y-3">
+          {/* Cart Items List */}
           {cartItems.map((item) => (
             <div
               key={item.id}
-              className="border border-[#eadfcd] rounded-2xl p-4 flex items-center gap-4 text-left"
+              className="border border-slate-200/90 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:border-emerald-300 hover:shadow-2xs transition text-left"
             >
-              <img
-                src={item.image}
-                alt={item.name}
-                className="w-20 h-20 rounded-xl object-cover"
-              />
-              <div className="flex-1">
-                <h3 className="font-black text-green-900">{item.name}</h3>
-                <p className="text-sm text-gray-500 mt-1">SL: {item.qty}</p>
+              {/* Item Info */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <img
+                  src={item.image || "/images/placeholder.jpg"}
+                  alt={item.name}
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
+                />
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                    {item.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Đơn giá: <strong className="text-slate-700">{item.price?.toLocaleString("vi-VN")}đ</strong>
+                  </p>
+                </div>
               </div>
-              <p className="font-black text-[#c99a45]">
-                {(item.price * item.qty).toLocaleString("vi-VN")}đ
-              </p>
+
+              {/* Quantity Stepper & Price & Delete */}
+              <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                {/* Stepper */}
+                <div className="flex items-center gap-1.5 bg-slate-100 rounded-xl p-1">
+                  <button
+                    type="button"
+                    onClick={() => updateQty(item.id, -1)}
+                    className="w-6 h-6 rounded-lg bg-white text-slate-600 hover:text-slate-900 flex items-center justify-center shadow-2xs cursor-pointer transition"
+                    title="Giảm số lượng"
+                  >
+                    <Minus size={12} />
+                  </button>
+                  <span className="w-7 text-center font-black text-xs text-slate-800">
+                    {item.qty || 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateQty(item.id, 1)}
+                    className="w-6 h-6 rounded-lg bg-white text-slate-600 hover:text-slate-900 flex items-center justify-center shadow-2xs cursor-pointer transition"
+                    title="Tăng số lượng"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+
+                {/* Subtotal */}
+                <div className="text-right min-w-[90px]">
+                  <span className="font-black text-xs sm:text-sm text-[#145c30]">
+                    {((item.price || 0) * (item.qty || 1)).toLocaleString("vi-VN")}đ
+                  </span>
+                </div>
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => removeItem(item.id)}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                  title="Xóa món này"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
           ))}
+
+          {/* Unified Bottom Action Row */}
+          <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => navigate("/menu")}
+              className="text-xs font-bold text-[#15803d] hover:text-[#145c30] hover:underline cursor-pointer self-start sm:self-auto"
+            >
+              + Chọn thêm món khác từ thực đơn
+            </button>
+
+            <div className="flex items-center justify-between sm:justify-end gap-4">
+              <div className="text-left sm:text-right">
+                <span className="text-[10px] text-slate-400 block font-semibold uppercase">Tạm tính</span>
+                <span className="text-base sm:text-lg font-black text-[#145c30]">
+                  {totalPrice.toLocaleString("vi-VN")}đ
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigate("/cart")}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#15803d] text-white hover:bg-[#145c30] shadow-sm hover:shadow transition cursor-pointer"
+              >
+                <span>Xem giỏ & Thanh toán</span>
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+

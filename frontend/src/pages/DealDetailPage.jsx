@@ -164,7 +164,7 @@ function DealDetailPage() {
     return (
       <div className="min-h-screen bg-[#fbf7ec] flex items-center justify-center px-4">
         <div className="bg-white rounded-3xl p-8 text-center shadow-md">
-          <h1 className="text-2xl font-black text-green-900">
+          <h1 className="text-2xl font-black text-[#145c30]">
             Đang tải khuyến mãi...
           </h1>
         </div>
@@ -176,7 +176,7 @@ function DealDetailPage() {
     return (
       <div className="min-h-screen bg-[#fbf7ec] flex items-center justify-center px-4">
         <div className="bg-white rounded-3xl p-8 text-center shadow-md">
-          <h1 className="text-2xl font-black text-green-900">
+          <h1 className="text-2xl font-black text-[#145c30]">
             Không tìm thấy khuyến mãi
           </h1>
           <Link

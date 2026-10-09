@@ -87,7 +87,9 @@ async function requireAuth(req, res, next) {
 
     next();
   } catch (error) {
-    console.error("Lỗi requireAuth:", error);
+    if (error.name !== "TokenExpiredError" && error.name !== "JsonWebTokenError") {
+      console.error("Lỗi requireAuth:", error);
+    }
 
     return res.status(401).json({
       success: false,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser, getAuthToken } from "../../utils/auth";
 import { canUseAction } from "../../utils/permissions";
 import { DealStatCard, SelectBox } from "../../components/admin/AdminDealsComponents";
@@ -10,7 +10,17 @@ import DealDetailPanel from "../../components/admin/DealDetailPanel";
 import AdminDealTable from "../../components/admin/AdminDealTable";
 import GlobalPagination from "../../components/admin/GlobalPagination";
 import { Gift, TicketPercent, Wallet, Search, RotateCcw, Trash2, Clock3 } from "lucide-react";
-import { EMPTY_DEAL_FORM, formatMoneyDeal, formatNumberDeal, formatDateDeal, getStatusTextDeal, getStatusStyleDeal, getTypeStyleDeal, getServiceTypeTextDeal } from "../../utils/dealsHelpers";
+import {
+  EMPTY_DEAL_FORM,
+  formatMoneyDeal,
+  formatNumberDeal,
+  formatDateDeal,
+  getStatusTextDeal,
+  getStatusStyleDeal,
+  getTypeStyleDeal,
+  getServiceTypeTextDeal,
+  getStoredDealTypes,
+} from "../../utils/dealsHelpers";
 
 const API_URL = "http://localhost:5001/api/deals";
 
@@ -53,7 +63,7 @@ function AdminDealsPage() {
   const handleImageChange = async (e, fieldName) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Ảnh không được vượt quá 5MB."); return; }
+    if (file.size > 5 * 1024 * 1024) { showAdminToast({ title: "Kích thước quá lớn", message: "Ảnh không được vượt quá 5MB.", type: "warning" }); return; }
     try {
       const formData = new FormData();
       formData.append("image", file);
@@ -63,13 +73,13 @@ function AdminDealsPage() {
         body: formData
       });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Upload ảnh thất bại"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi", message: result.message || "Upload ảnh thất bại", type: "error" }); return; }
       
       const imageUrl = result.imageUrl || result.images?.[0] || result.image || "";
       setEditForm((prev) => ({ ...prev, [fieldName]: imageUrl }));
     } catch (error) {
       console.error("Lỗi:", error);
-      alert("Không thể upload ảnh");
+      showAdminToast({ title: "Lỗi", message: "Không thể upload ảnh", type: "error" });
     } finally {
       e.target.value = "";
     }
@@ -82,15 +92,28 @@ function AdminDealsPage() {
   const resetFilter = () => { setSearch(""); setTypeFilter("all"); setStatusFilter("all"); };
 
   const filteredDeals = useMemo(() => {
-    return deals.filter((deal) => {
-      const keyword = removeVietnameseTones(String(search || globalSearch || "").trim());
-      const cleanName = removeVietnameseTones(deal.name);
-      const cleanCode = removeVietnameseTones(deal.code);
-      const matchSearch = !keyword || cleanName.includes(keyword) || cleanCode.includes(keyword);
-      const matchType = typeFilter === "all" || deal.type === typeFilter;
-      const matchStatus = statusFilter === "all" || deal.status === statusFilter;
-      return matchSearch && matchType && matchStatus;
-    });
+    const rawKeyword = String(search || globalSearch || "").trim();
+    const scored = deals
+      .map((deal) => {
+        const matchType = typeFilter === "all" || deal.type === typeFilter;
+        const matchStatus = statusFilter === "all" || deal.status === statusFilter;
+        if (!matchType || !matchStatus) return null;
+
+        const score = rawKeyword ? calculateSearchScore({
+          name: deal.name || deal.title,
+          code: deal.code,
+          description: deal.description
+        }, rawKeyword) : 1;
+
+        if (score === 0) return null;
+        return { deal, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored.map((s) => s.deal);
   }, [deals, search, globalSearch, typeFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
@@ -174,6 +197,25 @@ function AdminDealsPage() {
   };
   const closeEditModal = () => { setEditingDeal(null); setEditForm(EMPTY_DEAL_FORM); setIsModalOpen(false); };
   const saveDeal = async () => {
+    const errors = {};
+    if (!editForm.code || !editForm.code.trim()) errors.code = true;
+    if (!editForm.name || !editForm.name.trim()) errors.name = true;
+    if (!editForm.discount || !editForm.discount.trim()) errors.discount = true;
+    if (!editForm.startDate) errors.startDate = true;
+    if (!editForm.endDate) errors.endDate = true;
+    if (!editForm.serviceTypes || editForm.serviceTypes.length === 0) errors.serviceTypes = true;
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      showAdminToast({
+        title: "Thông tin chưa đầy đủ",
+        message: "Vui lòng nhập đầy đủ các trường bắt buộc (*).",
+        type: "warning",
+      });
+      return;
+    }
+    setFormErrors({});
+
     try {
       const url = editingDeal ? `${API_URL}/${editingDeal.id}` : API_URL;
       const method = editingDeal ? "PATCH" : "POST";
@@ -182,22 +224,40 @@ function AdminDealsPage() {
         showAdminToast({ title: "Thành công", message: editingDeal ? "Cập nhật khuyến mãi thành công." : "Thêm khuyến mãi mới thành công." });
         fetchDeals(); closeEditModal();
       } else {
-        const data = await res.json(); showAdminToast({ title: "Lỗi", message: data.message || "Lưu thất bại", type: "error" });
+        const data = await res.json();
+        showAdminToast({ title: "Lỗi", message: data.message || "Lưu thất bại", type: "error" });
       }
-    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Thất bại", message: "Lỗi kết nối", type: "error" }); }
+    } catch (error) {
+      console.error("Lỗi:", error);
+      showAdminToast({ title: "Thất bại", message: "Lỗi kết nối", type: "error" });
+    }
   };
+
+  const [dealTypesList, setDealTypesList] = useState(getStoredDealTypes);
+
+  useEffect(() => {
+    const handleUpdate = () => setDealTypesList(getStoredDealTypes());
+    window.addEventListener("deal_types_updated", handleUpdate);
+    return () => window.removeEventListener("deal_types_updated", handleUpdate);
+  }, []);
+
+  const availableDealTypes = useMemo(() => {
+    const fromTypes = dealTypesList.map((t) => t.name);
+    const fromDeals = deals.map((d) => d.type).filter(Boolean);
+    return Array.from(new Set([...fromTypes, ...fromDeals]));
+  }, [dealTypesList, deals]);
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <DealStatCard icon={<Gift />} title="Tổng khuyến mãi" value={deals.length} bg="bg-green-50" color="text-green-700" note="đang có trên hệ thống" />
-        <DealStatCard icon={<Clock3 />} title="Đang diễn ra" value={deals.filter((d) => d.status === "active").length} bg="bg-blue-50" color="text-blue-600" note="đang áp dụng" />
-        <DealStatCard icon={<TicketPercent />} title="Lượt sử dụng" value={deals.reduce((acc, curr) => acc + (curr.used || 0), 0)} bg="bg-purple-50" color="text-purple-600" note="trong 30 ngày qua" />
-        <DealStatCard icon={<Wallet />} title="Tổng giảm giá" value={formatMoneyDeal(deals.reduce((acc, curr) => acc + (curr.totalDiscount || 0), 0))} bg="bg-emerald-50" color="text-emerald-700" note="đã giảm cho khách" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <DealStatCard icon={<Gift />} title="Đang chạy" value={deals.filter(d => d.status === "active").length} bg="bg-green-100/70" color="text-green-700" note="Chương trình ưu đãi" />
+        <DealStatCard icon={<Clock3 />} title="Sắp diễn ra" value={deals.filter(d => d.status === "upcoming").length} bg="bg-orange-100/70" color="text-orange-600" note="Chương trình đã lên lịch" />
+        <DealStatCard icon={<TicketPercent />} title="Tổng lượt dùng" value={Number(deals.reduce((sum, d) => sum + Number(d.used || 0), 0)).toLocaleString("vi-VN")} bg="bg-blue-100/70" color="text-blue-600" note="Lượt áp dụng mã" />
+        <DealStatCard icon={<Wallet />} title="Tổng giảm giá" value={formatMoneyDeal(deals.reduce((sum, d) => sum + Number(d.totalDiscount || 0), 0))} bg="bg-purple-100/70" color="text-purple-600" note="Ngân sách khuyến mãi" />
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 items-start ${selectedDeal ? "xl:grid-cols-[minmax(0,1fr)_380px]" : ""}`}>
-        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        <section className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden text-left transition-all ${selectedDeal ? "xl:col-span-8" : "xl:col-span-12"}`}>
           <div className="p-4 border-b border-gray-100">
             <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${selectedDeal ? "xl:grid-cols-[1fr_160px_160px_90px]" : "xl:grid-cols-[1fr_190px_190px_100px]"}`}>
               <div className="h-12 rounded-xl border border-gray-100 bg-white px-4 flex items-center gap-3 shadow-sm">
@@ -205,7 +265,12 @@ function AdminDealsPage() {
                 <Search size={18} className="text-gray-400" />
               </div>
               <SelectBox label="Loại chương trình" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="all">Tất cả</option><option value="Combo">Combo</option><option value="Sinh nhật">Sinh nhật</option><option value="Đặt món">Đặt món</option><option value="Đặt bàn">Đặt bàn</option><option value="Ngày lễ">Ngày lễ</option><option value="Thành viên">Thành viên</option>
+                <option value="all">Tất cả</option>
+                {availableDealTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </SelectBox>
               <SelectBox label="Trạng thái" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="all">Tất cả</option><option value="active">Đang áp dụng</option><option value="upcoming">Sắp diễn ra</option><option value="paused">Tạm dừng</option><option value="ended">Đã kết thúc</option>

@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
 import { getDetailedReport } from "../../services/revenueService";
-import { 
-  Download, Search, TrendingUp, Wallet, ArrowDownRight, RotateCcw, 
-  ReceiptText, Calendar, Users, Percent, HelpCircle, AlertTriangle, 
+import {
+  Download, Search, TrendingUp, Wallet, ArrowDownRight, RotateCcw,
+  ReceiptText, Calendar, Users, Percent, HelpCircle, AlertTriangle,
   ArrowUpRight, Printer, FileSpreadsheet, FileText, ChevronDown, Check,
   User, MapPin, CreditCard, LayoutDashboard
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { saveAs } from "file-saver";
 import GlobalPagination from "../../components/admin/GlobalPagination";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, 
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, BarChart, Bar, Legend, PieChart, Pie, Cell,
   LineChart, Line
 } from "recharts";
@@ -91,7 +91,7 @@ function AdminReportPage() {
   const [sortField, setSortField] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
   const [selectedIds, setSelectedIds] = useState([]);
-  
+
   // Charts mode state
   const [revenueChartPeriod, setRevenueChartPeriod] = useState("day"); // hour, day, month
 
@@ -114,49 +114,49 @@ function AdminReportPage() {
     const now = new Date();
     let start = new Date();
     let end = new Date();
-    
+
     if (timeRange === "today") {
-      start.setHours(0,0,0,0);
-      end.setHours(23,59,59,999);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "yesterday") {
       start.setDate(now.getDate() - 1);
-      start.setHours(0,0,0,0);
+      start.setHours(0, 0, 0, 0);
       end.setDate(now.getDate() - 1);
-      end.setHours(23,59,59,999);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "7days") {
       start.setDate(now.getDate() - 6);
-      start.setHours(0,0,0,0);
-      end.setHours(23,59,59,999);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "30days") {
       start.setDate(now.getDate() - 29);
-      start.setHours(0,0,0,0);
-      end.setHours(23,59,59,999);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "thisweek") {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
       start = new Date(now.setDate(diff));
-      start.setHours(0,0,0,0);
-      end.setHours(23,59,59,999);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "thismonth") {
       start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end.setHours(23,59,59,999);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "thisquarter") {
       const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
       start = new Date(now.getFullYear(), qStartMonth, 1);
-      end.setHours(23,59,59,999);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "thisyear") {
       start = new Date(now.getFullYear(), 0, 1);
-      end.setHours(23,59,59,999);
+      end.setHours(23, 59, 59, 999);
     } else if (timeRange === "custom" && startDate && endDate) {
       start = new Date(startDate);
-      start.setHours(0,0,0,0);
+      start.setHours(0, 0, 0, 0);
       end = new Date(endDate);
-      end.setHours(23,59,59,999);
+      end.setHours(23, 59, 59, 999);
     } else {
       // Mặc định 7 ngày
       start.setDate(now.getDate() - 6);
-      start.setHours(0,0,0,0);
-      end.setHours(23,59,59,999);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
     }
     return { start, end };
   }, [timeRange, startDate, endDate]);
@@ -166,7 +166,7 @@ function AdminReportPage() {
     if (compareRange === "none") return null;
     const { start, end } = activeDateRange;
     const duration = end.getTime() - start.getTime();
-    
+
     // Lùi ngày tương tự độ dài của kỳ hiện tại
     const compareStart = new Date(start.getTime() - duration - 1);
     const compareEnd = new Date(end.getTime() - duration - 1);
@@ -189,34 +189,40 @@ function AdminReportPage() {
 
   // Lọc dữ liệu kỳ hiện tại
   const filteredReports = useMemo(() => {
-    return reports.filter(r => {
-      const orderDate = new Date(r.date);
-      if (orderDate < activeDateRange.start || orderDate > activeDateRange.end) return false;
+    const rawKeyword = String(search || "").trim();
+    const scored = reports
+      .map((r) => {
+        const orderDate = new Date(r.date);
+        if (orderDate < activeDateRange.start || orderDate > activeDateRange.end) return null;
 
-      // Tìm kiếm văn bản
-      if (search) {
-        const kw = search.toLowerCase();
-        const normKw = removeVietnameseTones(kw);
-        const nameNorm = removeVietnameseTones(r.customerName || "");
-        const matched = r.orderId?.toLowerCase().includes(kw) || 
-                        nameNorm.includes(normKw) ||
-                        r.phone?.includes(kw);
-        if (!matched) return false;
-      }
+        // Dropdown filters
+        if (paymentMethod !== "all" && r.paymentMethod !== paymentMethod) return null;
+        if (paymentStatus !== "all" && r.paymentStatus !== paymentStatus) return null;
+        if (orderType !== "all" && r.serviceType !== orderType) return null;
+        if (areaFilter !== "all" && r.area !== areaFilter) return null;
+        if (staffFilter !== "all" && r.staffName !== staffFilter) return null;
 
-      // Dropdown filters
-      if (paymentMethod !== "all" && r.paymentMethod !== paymentMethod) return false;
-      if (paymentStatus !== "all" && r.paymentStatus !== paymentStatus) return false;
-      if (orderType !== "all" && r.serviceType !== orderType) return false;
-      if (areaFilter !== "all" && r.area !== areaFilter) return false;
-      if (staffFilter !== "all" && r.staffName !== staffFilter) return false;
+        // Khoảng giá trị
+        if (minRevenue && Number(r.total || 0) < Number(minRevenue)) return null;
+        if (maxRevenue && Number(r.total || 0) > Number(maxRevenue)) return null;
 
-      // Khoảng giá trị
-      if (minRevenue && Number(r.total || 0) < Number(minRevenue)) return false;
-      if (maxRevenue && Number(r.total || 0) > Number(maxRevenue)) return false;
+        const score = rawKeyword ? calculateSearchScore({
+          customerName: r.customerName,
+          phone: r.phone,
+          id: r.orderId,
+          code: r.orderId,
+          tableName: r.area
+        }, rawKeyword) : 1;
 
-      return true;
-    });
+        if (score === 0) return null;
+        return { r, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored.map((s) => s.r);
   }, [reports, activeDateRange, search, paymentMethod, paymentStatus, orderType, areaFilter, staffFilter, minRevenue, maxRevenue]);
 
   // Lọc dữ liệu kỳ đối chiếu
@@ -307,7 +313,7 @@ function AdminReportPage() {
 
       const profitPercent = revenue > 0 ? (profit / revenue) * 100 : 0;
       const aov = orders > 0 ? revenue / orders : 0;
-      
+
       const totalCustomers = customers.size;
       const repeatedCount = Object.values(repeatedCustomers).filter(c => c > 1).length;
       const returnRate = totalCustomers > 0 ? (repeatedCount / totalCustomers) * 100 : 0;
@@ -418,10 +424,10 @@ function AdminReportPage() {
     });
     const total = Object.values(counts).reduce((s, c) => s + c, 0);
     return [
-      { name: "Tiền mặt", value: counts.cash, pct: total > 0 ? (counts.cash/total)*100 : 0 },
-      { name: "VietQR", value: counts.qr, pct: total > 0 ? (counts.qr/total)*100 : 0 },
-      { name: "Chuyển khoản", value: counts.bank, pct: total > 0 ? (counts.bank/total)*100 : 0 },
-      { name: "Quẹt thẻ", value: counts.card, pct: total > 0 ? (counts.card/total)*100 : 0 }
+      { name: "Tiền mặt", value: counts.cash, pct: total > 0 ? (counts.cash / total) * 100 : 0 },
+      { name: "VietQR", value: counts.qr, pct: total > 0 ? (counts.qr / total) * 100 : 0 },
+      { name: "Chuyển khoản", value: counts.bank, pct: total > 0 ? (counts.bank / total) * 100 : 0 },
+      { name: "Quẹt thẻ", value: counts.card, pct: total > 0 ? (counts.card / total) * 100 : 0 }
     ].filter(i => i.value > 0);
   }, [filteredReports]);
 
@@ -506,13 +512,13 @@ function AdminReportPage() {
       const trend = growths.revenue >= 0 ? "tăng 📈" : "giảm 📉";
       insights.push(`Doanh thu thuần ${trend} ${Math.abs(growths.revenue).toFixed(1)}% so với kỳ trước.`);
     }
-    
+
     if (topSellingItems.length > 0) {
       insights.push(`🐐 Món ăn được yêu chuộng nhất là "${topSellingItems[0].name}" với ${topSellingItems[0].qty} đơn hàng bán ra.`);
     }
 
     if (paymentSplit.length > 0) {
-      const topPM = paymentSplit.sort((a,b) => b.value - a.value)[0];
+      const topPM = paymentSplit.sort((a, b) => b.value - a.value)[0];
       insights.push(`💳 Phương thức thanh toán phổ biến nhất là ${topPM.name} chiếm ${topPM.pct.toFixed(0)}% tổng hóa đơn.`);
     }
 
@@ -582,7 +588,7 @@ function AdminReportPage() {
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
-    
+
     // Format money columns
     const moneyCols = [9, 10, 11, 12, 13];
     if (ws['!ref']) {
@@ -594,7 +600,7 @@ function AdminReportPage() {
         });
       }
     }
-    
+
     ws['!cols'] = [
       { wch: 5 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
       { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
@@ -605,7 +611,7 @@ function AdminReportPage() {
     XLSX.utils.book_append_sheet(wb, ws, "BaoCaoChiTiet");
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
-    saveAs(data, `bao_cao_doanh_thu_${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveAs(data, `bao_cao_doanh_thu_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   useEffect(() => {
@@ -617,10 +623,10 @@ function AdminReportPage() {
   const handleExportCSV = () => {
     const headers = ["STT,Ma don,Ngay gio,Khach hang,SDT,Nhan vien,Ban,Khu vuc,Thanh toan,Tong phu,Giam gia,Doanh thu thuan,Gia von,Loi nhuan\n"];
     const rows = sortedReports.map((r, i) => {
-      return `${i+1},${r.orderId},"${new Date(r.date).toLocaleString("vi-VN")}",${r.customerName || "Khach le"},${r.phone || ""},${r.staffName || ""},${r.tableCode || ""},${r.area || ""},${r.paymentMethod},${r.subtotal},${r.discount},${r.total},${r.cost},${r.profit}\n`;
+      return `${i + 1},${r.orderId},"${new Date(r.date).toLocaleString("vi-VN")}",${r.customerName || "Khach le"},${r.phone || ""},${r.staffName || ""},${r.tableCode || ""},${r.area || ""},${r.paymentMethod},${r.subtotal},${r.discount},${r.total},${r.cost},${r.profit}\n`;
     });
     const blob = new Blob([headers.concat(rows).join("")], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, `bao_cao_doanh_thu_${new Date().toISOString().slice(0,10)}.csv`);
+    saveAs(blob, `bao_cao_doanh_thu_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   // Print report
@@ -637,7 +643,7 @@ function AdminReportPage() {
   };
 
   const handleSelectOne = (id) => {
-    setSelectedIds(prev => 
+    setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
@@ -663,7 +669,7 @@ function AdminReportPage() {
 
   return (
     <div className="space-y-6 bg-[#f8fafc] pb-10 print:bg-white print:p-0 print:pb-0">
-      
+
       {/* 1. BỘ LỌC NÂNG CAO */}
       <section className="bg-white p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100 print:hidden transition-all hover:shadow-[0_6px_25px_rgba(0,0,0,0.03)]">
         <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
@@ -671,8 +677,8 @@ function AdminReportPage() {
             <LayoutDashboard size={18} /> Bộ lọc báo cáo nâng cao
           </h3>
           <div className="flex items-center gap-2">
-            <button 
-              onClick={handleResetFilters} 
+            <button
+              onClick={handleResetFilters}
               className="h-9 px-3.5 rounded-xl border border-gray-200 bg-white text-gray-600 font-black text-xs flex items-center gap-1.5 hover:bg-red-50 hover:text-red-500 hover:border-red-100 transition-all shrink-0"
             >
               <RotateCcw size={14} /> Đặt lại bộ lọc
@@ -694,8 +700,8 @@ function AdminReportPage() {
           {/* Thời gian */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Khoảng thời gian</label>
-            <select 
-              value={timeRange} 
+            <select
+              value={timeRange}
               onChange={e => { setTimeRange(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -714,8 +720,8 @@ function AdminReportPage() {
           {/* So sánh */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">So sánh với</label>
-            <select 
-              value={compareRange} 
+            <select
+              value={compareRange}
               onChange={e => setCompareRange(e.target.value)}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -727,8 +733,8 @@ function AdminReportPage() {
           {/* Loại đơn */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Loại đơn hàng</label>
-            <select 
-              value={orderType} 
+            <select
+              value={orderType}
               onChange={e => { setOrderType(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -742,8 +748,8 @@ function AdminReportPage() {
           {/* Phương thức thanh toán */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">PT Thanh toán</label>
-            <select 
-              value={paymentMethod} 
+            <select
+              value={paymentMethod}
               onChange={e => { setPaymentMethod(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -758,8 +764,8 @@ function AdminReportPage() {
           {/* Trạng thái đơn */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Trạng thái thanh toán</label>
-            <select 
-              value={paymentStatus} 
+            <select
+              value={paymentStatus}
               onChange={e => { setPaymentStatus(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -772,8 +778,8 @@ function AdminReportPage() {
           {/* Khu vực */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Khu vực</label>
-            <select 
-              value={areaFilter} 
+            <select
+              value={areaFilter}
               onChange={e => { setAreaFilter(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -787,8 +793,8 @@ function AdminReportPage() {
           {/* Nhân viên phục vụ */}
           <div>
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Nhân viên phục vụ</label>
-            <select 
-              value={staffFilter} 
+            <select
+              value={staffFilter}
               onChange={e => { setStaffFilter(e.target.value); setCurrentPage(1); }}
               className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
@@ -803,20 +809,20 @@ function AdminReportPage() {
           <div className="flex gap-2">
             <div className="w-1/2">
               <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Doanh thu từ</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 placeholder="Ví dụ: 100k"
-                value={minRevenue} 
+                value={minRevenue}
                 onChange={e => { setMinRevenue(e.target.value); setCurrentPage(1); }}
                 className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div className="w-1/2">
               <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Đến</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 placeholder="Ví dụ: 10M"
-                value={maxRevenue} 
+                value={maxRevenue}
                 onChange={e => { setMaxRevenue(e.target.value); setCurrentPage(1); }}
                 className="w-full h-10 px-3 rounded-xl border border-gray-200 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
@@ -828,11 +834,11 @@ function AdminReportPage() {
             <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Tìm theo văn bản</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input 
-                type="text" 
-                value={search} 
-                onChange={e => { setSearch(e.target.value); setCurrentPage(1); }} 
-                placeholder="Tìm mã hóa đơn, tên hoặc số điện thoại..." 
+              <input
+                type="text"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
+                placeholder="Tìm mã hóa đơn, tên hoặc số điện thoại..."
                 className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-inner"
               />
             </div>
@@ -846,10 +852,10 @@ function AdminReportPage() {
               <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Chọn ngày bắt đầu</label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={e => { setStartDate(e.target.value); setCurrentPage(1); }} 
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => { setStartDate(e.target.value); setCurrentPage(1); }}
                   className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -858,10 +864,10 @@ function AdminReportPage() {
               <label className="text-[11px] font-black text-gray-400 uppercase block mb-1.5">Chọn ngày kết thúc</label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={e => { setEndDate(e.target.value); setCurrentPage(1); }} 
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={e => { setEndDate(e.target.value); setCurrentPage(1); }}
                   className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -876,7 +882,7 @@ function AdminReportPage() {
         <KPICard title="Doanh thu" value={kpiStats.current.revenue} growth={kpiStats.growths.revenue} icon={Wallet} colorClass="bg-green-50 text-green-700" sparklineData={sparklineData.revenue} />
         <KPICard title="Giá vốn" value={kpiStats.current.cost} growth={kpiStats.growths.cost} icon={ArrowDownRight} colorClass="bg-orange-50 text-orange-600" sparklineData={sparklineData.cost} />
         <KPICard title="Lợi nhuận" value={kpiStats.current.profit} growth={kpiStats.growths.profit} icon={TrendingUp} colorClass="bg-purple-50 text-purple-600" sparklineData={sparklineData.profit} />
-        
+
         <KPICard title="Lợi nhuận (%)" value={kpiStats.current.profitPercent} isCurrency={false} growth={kpiStats.growths.profitPercent} icon={Percent} colorClass="bg-red-50 text-red-500" sparklineData={sparklineData.profit} unit="%" />
         <KPICard title="Giá trị đơn trung bình" value={kpiStats.current.aov} growth={kpiStats.growths.aov} icon={ArrowUpRight} colorClass="bg-teal-50 text-teal-600" sparklineData={sparklineData.revenue} />
         <KPICard title="Tổng số khách" value={kpiStats.current.guests} isCurrency={false} growth={kpiStats.growths.guests} icon={Users} colorClass="bg-amber-50 text-amber-600" sparklineData={sparklineData.guests} unit=" khách" />
@@ -885,7 +891,7 @@ function AdminReportPage() {
 
       {/* 3 + 4 + 5. CÁC KHỐI BIỂU ĐỒ PHÂN TÍCH */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Biểu đồ doanh thu chi tiết */}
         <div className="bg-white p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100/70 lg:col-span-2">
           <div className="flex items-center justify-between mb-6">
@@ -897,8 +903,8 @@ function AdminReportPage() {
               {['hour', 'day', 'month'].map(p => {
                 const labels = { hour: 'Giờ', day: 'Ngày', month: 'Tháng' };
                 return (
-                  <button 
-                    key={p} 
+                  <button
+                    key={p}
                     onClick={() => setRevenueChartPeriod(p)}
                     className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${revenueChartPeriod === p ? 'bg-white text-green-700 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:text-gray-700'}`}>
                     {labels[p]}
@@ -912,13 +918,13 @@ function AdminReportPage() {
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0F5D3E" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#0F5D3E" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#0F5D3E" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#0F5D3E" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="key" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v} />
                 <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', fontWeight: 'bold' }} formatter={(val) => [formatVND(val)]} />
                 <Area type="monotone" name="Doanh thu kỳ này" dataKey="revenue" stroke="#0F5D3E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
                 {compareRange !== "none" && (
@@ -937,16 +943,16 @@ function AdminReportPage() {
           <div className="h-[220px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie 
-                  data={paymentSplit} 
-                  cx="50%" cy="50%" 
-                  innerRadius={60} outerRadius={80} 
+                <Pie
+                  data={paymentSplit}
+                  cx="50%" cy="50%"
+                  innerRadius={60} outerRadius={80}
                   paddingAngle={3} dataKey="value" stroke="none"
                   startAngle={90} endAngle={-270}
                 >
                   {paymentSplit.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
                 </Pie>
-                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', fontWeight: 'bold' }} formatter={(val) => formatVND(val)}/>
+                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', fontWeight: 'bold' }} formatter={(val) => formatVND(val)} />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -984,7 +990,7 @@ function AdminReportPage() {
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="key" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }} tickFormatter={v => v >= 1000000 ? (v / 1000000).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(0) + 'K' : v} />
                 <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', fontWeight: 'bold' }} formatter={(val) => [formatVND(val)]} />
                 <Bar name="Doanh thu" dataKey="revenue" fill="#0F5D3E" radius={[4, 4, 0, 0]} barSize={16} />
                 <Bar name="Giá vốn (COGS)" dataKey="cost" fill="#f97316" radius={[4, 4, 0, 0]} barSize={16} />
@@ -998,7 +1004,7 @@ function AdminReportPage() {
 
       {/* 6 + 7 + 9. TOP MÓN ĂN, TOP KHÁCH HÀNG, HIỆU QUẢ KHU VỰC */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Top món bán chạy */}
         <div className="bg-white p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100/70">
           <h3 className="text-base font-black text-primary mb-1">Món ăn bán chạy</h3>
@@ -1083,10 +1089,44 @@ function AdminReportPage() {
       </section>
 
       {/* 8. HIỆU SUẤT NHÂN VIÊN PHỤC VỤ (BẢNG) */}
-      <section className="bg-white p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100">
-        <h3 className="text-base font-black text-primary mb-1">Hiệu suất bán hàng của Nhân viên</h3>
-        <p className="text-xs font-semibold text-gray-400 mb-5">Tính toán doanh số, lợi nhuận gộp và mức trích hoa hồng (1.5%) hỗ trợ</p>
-        <div className="overflow-x-auto text-xs font-bold text-gray-700">
+      <section className="bg-white p-4 sm:p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100">
+        <h3 className="text-sm sm:text-base font-black text-primary mb-1">Hiệu suất bán hàng của Nhân viên</h3>
+        <p className="text-xs font-semibold text-gray-400 mb-4">Tính toán doanh số, lợi nhuận gộp và mức trích hoa hồng (1.5%) hỗ trợ</p>
+
+        {/* MOBILE CARDS (< sm) */}
+        <div className="block sm:hidden divide-y divide-gray-100">
+          {staffSalesPerformance.map(staff => (
+            <div key={staff.name} className="py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-black text-xs">{staff.name.slice(0, 1)}</div>
+                  <span className="font-black text-xs text-gray-800">{staff.name}</span>
+                </div>
+                <span className="text-xs font-black text-gray-500">{staff.orders} đơn</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center bg-gray-50 p-2 rounded-xl text-[11px]">
+                <div>
+                  <span className="text-[10px] text-gray-400 block font-semibold">Doanh thu</span>
+                  <span className="font-black text-gray-800">{formatVND(staff.revenue)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 block font-semibold">Lợi nhuận</span>
+                  <span className="font-black text-primary">{formatVND(staff.profit)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-gray-400 block font-semibold">Hoa hồng</span>
+                  <span className="font-black text-amber-600">{formatVND(staff.commission)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+          {staffSalesPerformance.length === 0 && (
+            <div className="py-6 text-center text-xs text-gray-400 font-bold">Không có dữ liệu nhân viên phục vụ</div>
+          )}
+        </div>
+
+        {/* DESKTOP TABLE (>= sm) */}
+        <div className="hidden sm:block overflow-x-auto text-xs font-bold text-gray-700">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-black uppercase text-[10px]">
@@ -1122,7 +1162,7 @@ function AdminReportPage() {
 
       {/* 11 + 12 + 13. SO SÁNH DỮ LIỆU, AI INSIGHTS & CẢNH BÁO */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* So sánh kỳ này vs kỳ trước */}
         <div className="bg-white p-5 rounded-[18px] shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100 flex flex-col justify-between">
           <div>
@@ -1226,14 +1266,70 @@ function AdminReportPage() {
           </div>
         </div>
 
-        {/* Table container */}
-        <div className="overflow-x-auto">
+        {/* MOBILE CARDS VIEW (< lg) */}
+        <div className="block lg:hidden divide-y divide-gray-100">
+          {paginatedReports.map((item) => {
+            const isSelected = selectedIds.includes(item.orderId);
+            return (
+              <div key={item.orderId} className={`p-4 space-y-2.5 transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-slate-50'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleSelectOne(item.orderId)}
+                      className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                    />
+                    <span className="font-black text-sm text-primary">#{item.orderId}</span>
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${item.paymentStatus === 'paid' || item.status === 'completed' ? 'bg-green-50 text-green-700 border border-green-200/50' : 'bg-orange-50 text-orange-700 border border-orange-200/50'}`}>
+                    {item.paymentStatus === 'paid' || item.status === 'completed' ? 'Hoàn thành' : 'Chưa TT'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-black text-gray-800 truncate">{item.customerName} {item.phone ? `(${item.phone})` : ""}</span>
+                  <span className="text-gray-400 font-semibold">{item.tableCode ? `Bàn ${item.tableCode}` : ""} {item.area || ""}</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2.5 rounded-xl text-center text-xs">
+                  <div>
+                    <span className="text-[10px] text-gray-400 block font-semibold">Doanh thu</span>
+                    <span className="font-black text-gray-800">{formatVND(item.total)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block font-semibold">Giá vốn</span>
+                    <span className="font-semibold text-gray-500">{formatVND(item.cost)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400 block font-semibold">Lợi nhuận</span>
+                    <span className="font-black text-primary">{formatVND(item.profit)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-gray-400 pt-0.5">
+                  <span>NV: <strong className="text-gray-700 font-bold">{item.staffName || "Hệ thống"}</strong></span>
+                  <span>{new Date(item.date).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</span>
+                </div>
+              </div>
+            );
+          })}
+          {paginatedReports.length === 0 && (
+            <div className="py-12 text-center text-gray-400">
+              <Search size={32} className="text-gray-300 mx-auto mb-2" />
+              <p className="font-black text-sm text-gray-500">Không tìm thấy báo cáo nào</p>
+            </div>
+          )}
+        </div>
+
+        {/* DESKTOP TABLE VIEW (>= lg) */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full min-w-[1200px] text-left border-collapse table-layout-fixed">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-[11px] text-gray-400 uppercase tracking-wider font-black sticky top-0 z-10">
                 <th className="w-[50px] px-5 py-4 text-center print:hidden">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     onChange={handleSelectAll}
                     checked={paginatedReports.length > 0 && selectedIds.length === paginatedReports.length}
                     className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
@@ -1269,8 +1365,8 @@ function AdminReportPage() {
                 return (
                   <tr key={item.orderId} className={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${isSelected ? 'bg-primary/5 hover:bg-primary/10' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/10'}`}>
                     <td className="px-5 py-3.5 text-center print:hidden">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={isSelected}
                         onChange={() => handleSelectOne(item.orderId)}
                         className="rounded border-gray-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"

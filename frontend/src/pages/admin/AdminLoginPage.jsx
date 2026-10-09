@@ -90,8 +90,12 @@ function AdminLoginPage() {
         </p>
 
         {error && (
-          <div className="mb-4 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-semibold">
-            {error}
+          <div
+            role="alert"
+            id="admin-login-error"
+            className="mb-4 bg-red-50 border border-red-200 text-red-600 text-red-500 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2"
+          >
+            <span>{error}</span>
           </div>
         )}
 

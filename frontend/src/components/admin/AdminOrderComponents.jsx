@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { showAdminToast } from "./AdminToast";
 
 export function DetailBlock({ title, children }) {
   return (
@@ -60,14 +61,20 @@ export function OrderDetailPanel({
   const actualPayAmount = Math.min(customerGivenNumber, order.remainingAmount || 0);
 
   return (
-    <aside className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden xl:sticky xl:top-4 text-left">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-xl font-black text-primary">Chi tiết đơn hàng</h3>
+    <>
+      {/* Mobile Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl overflow-y-auto xl:static xl:z-auto xl:w-auto xl:max-w-none xl:rounded-2xl xl:border xl:border-gray-100 xl:shadow-sm xl:overflow-hidden xl:sticky xl:top-4 text-left">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+          <h3 className="text-lg sm:text-xl font-black text-primary">Chi tiết đơn hàng</h3>
 
-        <button onClick={onClose} className="text-gray-400 hover:text-red-500">
-          ✕
-        </button>
-      </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition font-bold text-sm">
+            ✕
+          </button>
+        </div>
 
       <div className="p-4 space-y-4">
         <div>
@@ -130,10 +137,17 @@ export function OrderDetailPanel({
 
               {foods.map((food, index) => (
                 <div
-                  key={food.id || index}
-                  className="grid grid-cols-[1fr_40px_80px_80px] gap-2 text-xs font-semibold text-gray-700"
+                  key={food.id ? `${food.id}_${food.priceOptionId || index}` : index}
+                  className="grid grid-cols-[1fr_40px_80px_80px] gap-2 text-xs font-semibold text-gray-700 py-1 border-b border-gray-50 last:border-0 items-center"
                 >
-                  <span className="truncate pr-1">{food.name}</span>
+                  <div className="pr-1">
+                    <div className="font-bold text-gray-900 truncate">{food.name}</div>
+                    {(food.priceOptionNote || food.price_option_note) && (
+                      <div className="text-[11px] text-amber-600 font-medium">
+                        Quy cách: {food.priceOptionNote || food.price_option_note}
+                      </div>
+                    )}
+                  </div>
                   <span>{food.qty || 1}</span>
                   <span>{formatPrice(food.price)}</span>
                   <span className="text-right">
@@ -266,7 +280,7 @@ export function OrderDetailPanel({
                   <button
                     onClick={() => {
                       if (customerGivenNumber <= 0) {
-                        alert("Vui lòng nhập số tiền khách đưa!");
+                        showAdminToast({ title: "Thiếu thông tin", message: "Vui lòng nhập số tiền khách đưa!", type: "warning" });
                         return;
                       }
                       onAddPayment(actualPayAmount, payMethod);
@@ -374,5 +388,6 @@ export function OrderDetailPanel({
         </div>
       </div>
     </aside>
+    </>
   );
 }

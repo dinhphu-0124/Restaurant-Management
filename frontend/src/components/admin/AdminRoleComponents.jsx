@@ -400,19 +400,25 @@ export function AccountDetailPanel({
   const isMe = currentUser.id === user.id;
 
   return (
-    <aside className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden xl:sticky xl:top-4 text-left">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-xl font-black text-green-955">
-          Thông tin chi tiết
-        </h3>
+    <>
+      {/* Mobile Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl overflow-y-auto xl:static xl:z-auto xl:w-auto xl:max-w-none xl:rounded-3xl xl:border xl:border-gray-100 xl:shadow-sm xl:overflow-hidden xl:sticky xl:top-4 text-left">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+          <h3 className="text-lg sm:text-xl font-black text-green-955">
+            Thông tin chi tiết
+          </h3>
 
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-red-500 text-lg"
-        >
-          ✕
-        </button>
-      </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
 
       <div className="p-5 space-y-6">
         <div className="flex items-center gap-4">
@@ -519,5 +525,6 @@ export function AccountDetailPanel({
         )}
       </div>
     </aside>
+    </>
   );
 }

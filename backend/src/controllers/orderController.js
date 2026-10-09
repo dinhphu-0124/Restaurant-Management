@@ -123,6 +123,9 @@ function mapOrder(row, items = []) {
     name: item.name,
     image: item.image,
     price: Number(item.price || 0),
+    unitCost: Number(item.unit_cost || 0),
+    priceOptionId: item.price_option_id ? Number(item.price_option_id) : null,
+    priceOptionNote: item.price_option_note || "",
     qty: Number(item.qty || 1),
     note: item.note || "",
   }));
@@ -261,24 +264,20 @@ exports.getOrders = async (req, res) => {
 
 exports.getMyOrders = async (req, res) => {
   try {
-    const [allOrderRows] = await db.query(
-      `SELECT * FROM orders ORDER BY created_at DESC`,
+    const userEmail = req.user.email ? String(req.user.email).trim().toLowerCase() : "";
+    const userPhone = req.user.phone ? String(req.user.phone).trim() : "";
+    const userId = req.user.id ? String(req.user.id) : "";
+
+    const [orderRows] = await db.query(
+      `SELECT * FROM orders 
+       WHERE (
+         (email IS NOT NULL AND email != '' AND LOWER(email) = ?)
+         OR (phone IS NOT NULL AND phone != '' AND phone = ?)
+         OR JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.userId')) = ?
+       )
+       ORDER BY created_at DESC`,
+      [userEmail, userPhone, userId],
     );
-    const orderRows = allOrderRows.filter((order) => {
-      const rawData = parseJson(order.raw_data, {});
-      const sameUserId =
-        rawData.userId && String(rawData.userId) === String(req.user.id);
-      const sameEmail =
-        order.email &&
-        req.user.email &&
-        String(order.email).toLowerCase() ===
-          String(req.user.email).toLowerCase();
-      const samePhone =
-        order.phone &&
-        req.user.phone &&
-        String(order.phone) === String(req.user.phone);
-      return sameUserId || sameEmail || samePhone;
-    });
 
     const orderIds = orderRows.map((order) => order.id);
     let itemRows = [];
@@ -304,8 +303,7 @@ exports.getMyOrders = async (req, res) => {
     console.error("Lỗi lấy lịch sử đơn hàng của tôi:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi lấy lịch sử đơn hàng.",
-      error: error.message,
+      message: "Lỗi hệ thống khi lấy lịch sử đơn hàng.",
     });
   }
 };
@@ -400,6 +398,87 @@ exports.createOrder = async (req, res) => {
       });
     }
 
+    // Backend Source of Truth: verify items & calculate authoritative subtotal
+    let verifiedSubtotal = 0;
+    const verifiedItems = [];
+
+    for (const item of cartItems) {
+      const itemCode = item.id || item.code || item.menuItemCode || "";
+      const [menuRows] = await connection.query(
+        "SELECT id, code, name, image, price, cost_price FROM menu_items WHERE code = ? LIMIT 1",
+        [itemCode],
+      );
+
+      if (menuRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Món ăn mã "${itemCode}" không tồn tại hoặc đã bị ngừng bán.`,
+        });
+      }
+
+      const dish = menuRows[0];
+      let unitPrice = Number(dish.price || 0);
+      let unitCost = Number(dish.cost_price || 0);
+      let priceOptionId = item.priceOptionId ? Number(item.priceOptionId) : null;
+      let priceOptionNote = item.priceOptionNote || "";
+
+      if (priceOptionId) {
+        const [optRows] = await connection.query(
+          "SELECT id, price, cost_price, note, is_active FROM dish_price_options WHERE id = ? AND menu_item_code = ? LIMIT 1",
+          [priceOptionId, itemCode],
+        );
+        if (optRows.length > 0 && optRows[0].is_active) {
+          unitPrice = Number(optRows[0].price || 0);
+          unitCost = Number(optRows[0].cost_price || 0);
+          priceOptionNote = optRows[0].note || priceOptionNote;
+        } else {
+          const [defaultOpts] = await connection.query(
+            "SELECT id, price, cost_price, note FROM dish_price_options WHERE menu_item_code = ? AND is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 1",
+            [itemCode],
+          );
+          if (defaultOpts.length > 0) {
+            priceOptionId = defaultOpts[0].id;
+            unitPrice = Number(defaultOpts[0].price || 0);
+            unitCost = Number(defaultOpts[0].cost_price || 0);
+            priceOptionNote = defaultOpts[0].note || "";
+          }
+        }
+      } else {
+        const [defaultOpts] = await connection.query(
+          "SELECT id, price, cost_price, note FROM dish_price_options WHERE menu_item_code = ? AND is_active = 1 ORDER BY display_order ASC, id ASC LIMIT 1",
+          [itemCode],
+        );
+        if (defaultOpts.length > 0) {
+          priceOptionId = defaultOpts[0].id;
+          unitPrice = Number(defaultOpts[0].price || 0);
+          unitCost = Number(defaultOpts[0].cost_price || 0);
+          priceOptionNote = defaultOpts[0].note || "";
+        }
+      }
+
+      const qty = safeNumber(item.qty || item.quantity, 1);
+      verifiedSubtotal += unitPrice * qty;
+
+      verifiedItems.push({
+        itemCode,
+        name: dish.name || item.name || "",
+        image: dish.image || item.image || "",
+        price: unitPrice,
+        unitCost: unitCost,
+        priceOptionId,
+        priceOptionNote,
+        qty,
+        note: item.note || "",
+        rawData: item,
+      });
+    }
+
+    const subtotal = verifiedSubtotal > 0 ? verifiedSubtotal : safeNumber(body.subtotal);
+    const shippingFee = safeNumber(body.shippingFee);
+    const discountTotal = safeNumber(body.discountTotal);
+    const calculatedTotal = Math.max(0, subtotal + shippingFee - discountTotal);
+
     await connection.query(
       `
       INSERT INTO orders (
@@ -422,11 +501,11 @@ exports.createOrder = async (req, res) => {
         paymentMethod,
         paymentStatus,
         status,
-        safeNumber(body.subtotal),
-        safeNumber(body.shippingFee),
-        safeNumber(body.discountTotal),
+        subtotal,
+        shippingFee,
+        discountTotal,
         safeNumber(body.couponDiscountTotal),
-        safeNumber(body.total || body.totalPrice),
+        calculatedTotal,
         toJsonString(appliedCoupon, null),
         body.paymentContent || "",
         JSON.stringify(body.sepayTransaction || null),
@@ -450,23 +529,23 @@ exports.createOrder = async (req, res) => {
     );
     const orderDbId = orderRows[0].id;
 
-    for (const item of cartItems) {
-      const itemCode = item.id || item.code || item.menuItemCode || "";
-      const [menuRows] = await connection.query("SELECT cost_price FROM menu_items WHERE code = ? LIMIT 1", [itemCode]);
-      const unitCost = menuRows.length > 0 ? Number(menuRows[0].cost_price || 0) : 0;
-
+    for (const vItem of verifiedItems) {
       await connection.query(
-        `INSERT INTO order_items (order_id, menu_item_code, name, image, price, unit_cost, qty, note, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO order_items (
+          order_id, menu_item_code, price_option_id, name, price_option_note, image, price, unit_cost, qty, note, raw_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderDbId,
-          itemCode,
-          item.name || "",
-          item.image || "",
-          safeNumber(item.price),
-          unitCost,
-          safeNumber(item.qty || item.quantity, 1),
-          item.note || "",
-          JSON.stringify(item),
+          vItem.itemCode,
+          vItem.priceOptionId,
+          vItem.name,
+          vItem.priceOptionNote,
+          vItem.image,
+          vItem.price,
+          vItem.unitCost,
+          vItem.qty,
+          vItem.note,
+          JSON.stringify(vItem.rawData),
         ],
       );
     }

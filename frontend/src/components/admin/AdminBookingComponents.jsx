@@ -23,30 +23,29 @@ export function DetailRow({ label, value }) {
   );
 }
 
-export function BookingStatCard({ icon, title, value, bg, color, note = "", valueColor }) {
+export function BookingStatCard({ icon, title, value, bg, color, note = "", valueColor, className = "" }) {
   const textColor = valueColor || color;
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 flex items-start gap-2.5 hover:bg-primary/5 hover:border-primary/20 hover:-translate-y-0.5 hover:shadow-md transition text-left min-w-0">
-      {/* Icon left */}
-      <div className={`w-8 h-8 rounded-lg ${bg} ${color} flex items-center justify-center shrink-0`}>
-        {React.cloneElement(icon, { size: 16 })}
-      </div>
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-2xs p-3 sm:p-3.5 flex items-center justify-between gap-2 hover:bg-emerald-50/20 hover:border-emerald-100 hover:shadow-xs transition text-left min-w-0 ${className}`}>
       {/* Text column */}
-      <div className="flex flex-col flex-1">
-        {/* Row 1: Title */}
-        <p className="text-[11px] sm:text-xs font-black text-gray-500 truncate leading-tight">
+      <div className="flex flex-col min-w-0 flex-1">
+        <p className="text-[11px] sm:text-xs font-bold text-slate-500 truncate leading-tight">
           {title}
         </p>
-        {/* Row 2: Value */}
-        <h3 className={`text-[20px] sm:text-[22px] font-black ${textColor} mt-1 leading-none truncate`}>
+        <h3 className={`text-lg sm:text-xl xl:text-2xl font-black ${textColor} mt-1 leading-none`}>
           {value}
         </h3>
-        {/* Row 3: Growth note */}
-        <div className="mt-1 flex items-center min-w-0 h-5">
-          <span className="px-1.5 py-0.5 rounded-lg bg-green-50 text-green-700 text-[9px] sm:text-[10px] font-black shrink-0">
-            {note || "-"}
-          </span>
-        </div>
+        {note && note !== "-" ? (
+          <div className="mt-1 flex items-center min-w-0 h-4">
+            <span className="px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-700 text-[9px] sm:text-[10px] font-bold shrink-0">
+              {note}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {/* Icon right */}
+      <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl ${bg} ${color} flex items-center justify-center shrink-0`}>
+        {React.cloneElement(icon, { size: 16 })}
       </div>
     </div>
   );
@@ -55,11 +54,12 @@ export function BookingStatCard({ icon, title, value, bg, color, note = "", valu
 export function TabButton({ active, onClick, children }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`h-14 px-3 border-b-2 font-black whitespace-nowrap transition ${
+      className={`h-11 sm:h-13 px-2.5 sm:px-4 lg:px-5 border-b-2 font-bold text-xs sm:text-sm whitespace-nowrap transition-all duration-200 shrink-0 ${
         active
-          ? "border-primary/20 border-t-primary bg-primary/5"
-          : "border-transparent text-gray-500 hover:text-primary hover:bg-primary/5"
+          ? "border-emerald-700 text-emerald-800 bg-emerald-50/50"
+          : "border-transparent text-gray-500 hover:text-emerald-700 hover:bg-emerald-50/20"
       }`}
     >
       {children}
@@ -67,15 +67,21 @@ export function TabButton({ active, onClick, children }) {
   );
 }
 
-export function SelectBox({ label, value, onChange, children }) {
+export function SelectBox({ label, value, onChange, children, compact = false }) {
+  const isFiltered = value && value !== "all";
   return (
-    <label className="h-12 rounded-xl border border-gray-100 bg-white px-3 flex flex-col justify-center shadow-sm min-w-0 text-left">
-      <span className="text-[11px] font-black text-gray-400">{label}</span>
-
+    <label
+      className={`h-9 sm:h-10 rounded-xl border flex flex-col justify-center px-2 sm:px-3 shadow-2xs min-w-0 w-full transition-all cursor-pointer ${
+        isFiltered
+          ? "border-emerald-300 bg-emerald-50/40 text-emerald-900"
+          : "border-slate-200/90 bg-white text-slate-700 hover:border-slate-300"
+      } focus-within:border-emerald-600 focus-within:ring-1 focus-within:ring-emerald-600/20 ${compact ? "lg:w-[130px]" : ""}`}
+    >
+      <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 truncate leading-none mb-0.5 uppercase tracking-tight">{label}</span>
       <select
         value={value}
         onChange={onChange}
-        className="outline-none bg-transparent text-sm font-bold text-gray-700 min-w-0"
+        className="outline-none bg-transparent text-[11px] sm:text-xs font-semibold text-slate-700 min-w-0 truncate cursor-pointer leading-tight"
       >
         {children}
       </select>
@@ -107,14 +113,20 @@ export function BookingDetailPanel({
   const foods = booking.cartItems || booking.items || [];
 
   return (
-    <aside className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden 2xl:sticky 2xl:top-4 text-left">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-xl font-black text-green-955">Chi tiết đặt bàn</h3>
+    <>
+      {/* Mobile Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl overflow-y-auto xl:static xl:z-auto xl:w-auto xl:max-w-none xl:rounded-2xl xl:border xl:border-gray-100 xl:shadow-sm xl:overflow-hidden xl:sticky xl:top-4 text-left">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+          <h3 className="text-lg sm:text-xl font-black text-green-955">Chi tiết đặt bàn</h3>
 
-        <button onClick={onClose} className="text-gray-400 hover:text-red-500">
-          <X size={20} />
-        </button>
-      </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition font-bold text-sm">
+            <X size={18} />
+          </button>
+        </div>
 
       <div className="p-4 space-y-4">
         <div>
@@ -243,5 +255,6 @@ export function BookingDetailPanel({
         )}
       </div>
     </aside>
+    </>
   );
 }

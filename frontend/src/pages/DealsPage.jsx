@@ -251,7 +251,7 @@ function DealsPage() {
         ) : (
           <section className="relative h-[260px] sm:h-[320px] md:h-[420px] rounded-[22px] md:rounded-[30px] shadow-xl bg-white border border-[#eadfcd] flex items-center justify-center text-center px-6">
             <div>
-              <p className="text-2xl md:text-4xl font-black text-green-900">
+              <p className="text-2xl md:text-4xl font-black text-[#145c30]">
                 Chưa có khuyến mãi nổi bật
               </p>
 
@@ -591,7 +591,7 @@ function DealsPage() {
 function SectionTitle({ title, subtitle }) {
   return (
     <section className="text-center my-8">
-      <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-green-900 uppercase leading-tight">
+      <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#145c30] uppercase leading-tight">
         {title}
       </h2>
 

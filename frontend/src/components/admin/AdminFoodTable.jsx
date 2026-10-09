@@ -1,5 +1,5 @@
 import React from "react";
-import { Star, Eye, Pencil, Trash2 } from "lucide-react";
+import { Star, Pencil, Trash2 } from "lucide-react";
 import { ActionButton } from "./AdminMenuComponents";
 
 export default function AdminFoodTable({
@@ -19,8 +19,114 @@ export default function AdminFoodTable({
   deleteFood
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-[1370px] w-full text-left text-sm table-fixed">
+    <div>
+      {/* Mobile Food Cards (lg:hidden) */}
+      <div className="block lg:hidden divide-y divide-gray-100">
+        {currentFoods.length === 0 ? (
+          <div className="px-4 py-10 text-center text-gray-400 font-bold text-xs">
+            Chưa có món ăn nào.
+          </div>
+        ) : (
+          currentFoods.map((food) => {
+            const isSelected = selectedFood?.id === food.id;
+            const isChecked = selectedFoodIds.includes(food.id);
+            return (
+              <div
+                key={food.id}
+                onClick={() => setSelectedFood(food)}
+                className={`p-3.5 space-y-2.5 transition-colors cursor-pointer text-left ${
+                  isSelected ? "bg-emerald-50/70" : "hover:bg-slate-50"
+                }`}
+              >
+                {/* Header: Checkbox, Food Name, Category, Actions */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSelectFood(food.id)}
+                      className="w-4 h-4 accent-green-700 rounded mt-1 shrink-0"
+                    />
+                    <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden shrink-0 border border-slate-200/80">
+                      <img
+                        src={food.image || "/images/placeholder.jpg"}
+                        alt={food.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/images/placeholder.jpg";
+                        }}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 text-sm line-clamp-2 leading-tight">
+                        {food.name}
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                        Mã: {food.id} • <span className="text-emerald-700 font-bold">{food.category}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <ActionButton
+                      icon={<Pencil size={14} />}
+                      color="secondary"
+                      disabled={!canUseAction(currentUser, "menu:update")}
+                      title="Chỉnh sửa món ăn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditFoodModal(food);
+                      }}
+                    />
+                    <ActionButton
+                      icon={<Trash2 size={14} />}
+                      color="red"
+                      disabled={!canUseAction(currentUser, "menu:delete")}
+                      title="Xóa món ăn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteFood(food);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Price, Status & Metadata Footer */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
+                  <div className="font-black text-emerald-800">
+                    {food.hasMultiplePrices || (food.priceOptions && food.priceOptions.length > 1) ? (
+                      <span>Từ {formatPrice(food.price)}</span>
+                    ) : (
+                      <span>{formatPrice(food.price)}</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {food.badge && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-50 text-rose-600 border border-rose-100">
+                        {food.badge}
+                      </span>
+                    )}
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${getStatusStyle(
+                        food.status
+                      )}`}
+                    >
+                      {getStatusText(food.status)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop Table (hidden on mobile, visible on lg+) */}
+      <div className="overflow-x-auto hidden lg:block">
+        <table className="min-w-[1370px] w-full text-left text-sm table-fixed">
         <thead className="bg-[#fbfcfb] text-gray-600 font-black text-xs uppercase">
           <tr>
             <th className="w-[50px] px-4 py-3">
@@ -86,8 +192,12 @@ export default function AdminFoodTable({
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-11 h-11 rounded-lg bg-gray-100 overflow-hidden shrink-0">
                     <img
-                      src={food.image}
+                      src={food.image || "/images/placeholder.jpg"}
                       alt={food.name}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/images/placeholder.jpg";
+                      }}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -101,9 +211,20 @@ export default function AdminFoodTable({
               <td className="px-4 py-3 font-black text-green-700 whitespace-nowrap truncate max-w-[190px]" title={food.id}>
                 {food.id}
               </td>
-              <td className={`px-4 py-3`}>{food.category}</td>
+              <td className="px-4 py-3">{food.category}</td>
               <td className="px-4 py-3 font-black text-primary">
-                {formatPrice(food.price)}
+                <div>
+                  {food.hasMultiplePrices || (food.priceOptions && food.priceOptions.length > 1) ? (
+                    <>
+                      <span>Từ {formatPrice(food.price)}</span>
+                      <span className="block text-[11px] font-bold text-emerald-700">
+                        ({food.priceOptions.length} mức giá)
+                      </span>
+                    </>
+                  ) : (
+                    <span>{formatPrice(food.price)}</span>
+                  )}
+                </div>
               </td>
 
               <td className="px-4 py-3 text-center">
@@ -152,19 +273,10 @@ export default function AdminFoodTable({
               <td className="px-4 py-3 sticky right-0 bg-white z-20 shadow-[-8px_0_12px_-12px_rgba(0,0,0,0.25)]">
                 <div className="flex items-center justify-center gap-2">
                   <ActionButton
-                    icon={<Eye size={16} />}
-                    color="green"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedFood(food);
-                    }}
-                  />
-
-                  <ActionButton
                     icon={<Pencil size={16} />}
                     color="emerald"
                     disabled={!canUseAction(currentUser, "menu:update")}
-                    title={!canUseAction(currentUser, "menu:update") ? "Bạn không có quyền thực hiện thao tác này." : ""}
+                    title={!canUseAction(currentUser, "menu:update") ? "Bạn không có quyền thực hiện thao tác này." : "Chỉnh sửa món ăn"}
                     onClick={(e) => {
                       e.stopPropagation();
                       openEditFoodModal(food);
@@ -175,7 +287,7 @@ export default function AdminFoodTable({
                     icon={<Trash2 size={16} />}
                     color="red"
                     disabled={!canUseAction(currentUser, "menu:delete")}
-                    title={!canUseAction(currentUser, "menu:delete") ? "Bạn không có quyền thực hiện thao tác này." : ""}
+                    title={!canUseAction(currentUser, "menu:delete") ? "Bạn không có quyền thực hiện thao tác này." : "Xóa món ăn"}
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteFood(food);
@@ -187,6 +299,7 @@ export default function AdminFoodTable({
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

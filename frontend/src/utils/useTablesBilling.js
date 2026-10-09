@@ -144,7 +144,7 @@ export function useTablesBilling({ selectedTable, setSelectedTable, bookings, se
       setCartToAdd([]);
     } catch (error) {
       console.error(error);
-      alert(error.message || "Không thể gọi thêm món.");
+      showAdminToast({ title: "Lỗi", message: error.message || "Không thể gọi thêm món.", type: "error" });
     }
   };
 
@@ -226,7 +226,7 @@ export function useTablesBilling({ selectedTable, setSelectedTable, bookings, se
       }
     } catch (err) {
       console.error(err);
-      alert("Không thể giả lập thanh toán SePay: " + err.message);
+      showAdminToast({ title: "Lỗi giả lập", message: "Không thể giả lập thanh toán SePay: " + err.message, type: "error" });
     }
   };
 
@@ -258,7 +258,7 @@ export function useTablesBilling({ selectedTable, setSelectedTable, bookings, se
       setCouponMsg("");
     } catch (error) {
       console.error(error);
-      alert(error.message || "Không thể thanh toán.");
+      showAdminToast({ title: "Lỗi thanh toán", message: error.message || "Không thể thanh toán.", type: "error" });
     }
   };
 

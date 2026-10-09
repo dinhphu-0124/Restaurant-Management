@@ -1,9 +1,6 @@
 import React from "react";
 import {
-  X,
-  Lock,
-  Unlock,
-  Trash2
+  X
 } from "lucide-react";
 import { canUseAction } from "../../utils/permissions";
 
@@ -155,7 +152,7 @@ export function InputField({ label, value, onChange, type = "text", error }) {
   );
 }
 
-export function ActionButton({ icon, color, onClick }) {
+export function ActionButton({ icon, color, onClick, disabled = false, title = "" }) {
   const colors = {
     green: "bg-green-50 text-green-700 hover:bg-green-100",
     emerald: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
@@ -167,7 +164,11 @@ export function ActionButton({ icon, color, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${colors[color] || colors.primary}`}
+      disabled={disabled}
+      title={title}
+      className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
+        disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" : (colors[color] || colors.primary)
+      }`}
     >
       {icon}
     </button>
@@ -251,6 +252,11 @@ export function TableButton({ table, active, onClick }) {
       </div>
 
       <div className="space-y-0.5">
+        {table.status === "serving" && table.pinCode && (
+          <p className="text-[11px] font-black text-blue-700 tracking-widest bg-blue-100 rounded-md px-1.5 py-0.5 inline-block">
+            PIN: {table.pinCode}
+          </p>
+        )}
         <p className="text-[10px] font-semibold text-gray-400 truncate">
           {table.description || "Bàn ăn tiêu chuẩn"}
         </p>
@@ -281,15 +287,21 @@ export function TableDetailPanel({
   const canEdit = canUseAction(currentUser, "tables:update");
 
   return (
-    <aside className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden xl:sticky xl:top-4 xl:self-start xl:h-fit xl:max-h-none text-left">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-xl font-black text-green-950">
-          Chi tiết bàn {table.code}
-        </h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-red-500">
-          <X size={20} />
-        </button>
-      </div>
+    <>
+      {/* Mobile Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl overflow-y-auto xl:static xl:z-auto xl:w-auto xl:max-w-none xl:rounded-2xl xl:border xl:border-gray-100 xl:shadow-sm xl:overflow-hidden xl:sticky xl:top-4 xl:self-start xl:h-fit xl:max-h-none text-left">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+          <h3 className="text-lg sm:text-xl font-black text-green-950">
+            Chi tiết bàn {table.code}
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition font-bold text-sm">
+            <X size={18} />
+          </button>
+        </div>
 
       <div className="p-4 space-y-4">
         <div className="h-28 rounded-2xl border border-gray-100 bg-[#fbfcfb] flex items-center justify-center">
@@ -300,13 +312,25 @@ export function TableDetailPanel({
 
         <StatusBadge status={table.status} />
 
-        <DetailBlock title="Thông tin bàn">
-          <DetailRow label="Mã bàn" value={table.code} />
-          <DetailRow label="Khu vực" value={table.areaName} />
-          <DetailRow label="Sức chứa" value={`${table.capacity} người`} />
-          <DetailRow label="Mô tả" value={table.description} />
-          <DetailRow label="Cập nhật" value={formatDateTime(table.updatedAt)} />
-        </DetailBlock>
+        {table.status === "serving" && table.pinCode && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-blue-500 font-bold mb-1">🔑 MÃ PIN KHÁCH GỌI MÓN THÊM</p>
+              <p className="text-2xl font-black tracking-[0.3em] text-blue-800">{table.pinCode}</p>
+            </div>
+            <p className="text-[10px] text-blue-400 text-right max-w-[80px] leading-tight">Cung cấp cho khách khi họ muốn gọi thêm món</p>
+          </div>
+        )}
+
+        {!booking && (
+          <DetailBlock title="Thông tin bàn">
+            <DetailRow label="Mã bàn" value={table.code} />
+            <DetailRow label="Khu vực" value={table.areaName} />
+            <DetailRow label="Sức chứa" value={`${table.capacity} người`} />
+            <DetailRow label="Mô tả" value={table.description} />
+            <DetailRow label="Cập nhật" value={formatDateTime(table.updatedAt)} />
+          </DetailBlock>
+        )}
 
         {booking ? (
           <>
@@ -483,40 +507,18 @@ export function TableDetailPanel({
           </button>
         )}
 
-        {canEdit && !booking && (
-          <div className="grid grid-cols-2 gap-2 border-t border-gray-100 pt-4 mt-2">
-            <button
-              onClick={() => onStatusChange("available")}
-              className="h-11 rounded-xl bg-green-50 text-green-700 border border-green-100 font-black hover:bg-green-100"
-            >
-              <Unlock size={16} className="inline mr-1" />
-              Mở bàn
-            </button>
-
-            <button
-              onClick={() => onStatusChange("maintenance")}
-              className="h-11 rounded-xl bg-gray-100 text-gray-600 border border-gray-200 font-black hover:bg-gray-200"
-            >
-              <Lock size={16} className="inline mr-1" />
-              Bảo trì
-            </button>
-
-            <button
-              onClick={() => onStatusChange("serving")}
-              className="h-11 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-black hover:bg-blue-100"
-            >
-              Đang phục vụ
-            </button>
-
+        {canEdit && (
+          <div className="border-t border-gray-100 pt-4 mt-2">
             <button
               onClick={onEdit}
-              className="h-11 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-black hover:bg-blue-100"
+              className="w-full h-12 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-black hover:bg-blue-100 transition"
             >
-              Chỉnh sửa
+              Chi tiết & Quản lý bàn
             </button>
           </div>
         )}
       </div>
     </aside>
+    </>
   );
 }

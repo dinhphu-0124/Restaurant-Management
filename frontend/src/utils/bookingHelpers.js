@@ -30,13 +30,19 @@ export const getStatusStyle = (status) => {
 };
 
 export const getTypeText = (booking) => {
-  if (booking.type === "table_with_order") return "Từ Checkout";
+  if (booking.type === "table_with_order") {
+    if (booking.selectedTable) return "Gọi thêm món";
+    return "Từ Checkout";
+  }
   if (booking.type === "table_with_food") return "Kèm món";
   return "Chỉ đặt bàn";
 };
 
 export const getTypeStyle = (booking) => {
-  if (booking.type === "table_with_order") return "bg-purple-50 text-purple-600";
+  if (booking.type === "table_with_order") {
+    if (booking.selectedTable) return "bg-orange-50 text-orange-600 border border-orange-200";
+    return "bg-purple-50 text-purple-600";
+  }
   if (booking.type === "table_with_food") return "bg-green-50 text-green-700";
   return "bg-blue-50 text-blue-600";
 };
@@ -48,14 +54,22 @@ export const formatDateBooking = (value) => {
   if (!value) return "Chưa có";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN");
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export const formatDateTimeBooking = (value) => {
   if (!value) return "Chưa có";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return `${date.toLocaleDateString("vi-VN")} ${date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
 export const isActiveBooking = (booking) => {

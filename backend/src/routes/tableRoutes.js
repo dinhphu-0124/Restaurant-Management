@@ -35,6 +35,9 @@ router.delete(
   tableController.deleteArea,
 );
 
+// GET /api/tables/check/:code - Kiểm tra trạng thái bàn theo mã (public, không cần auth)
+router.get("/check/:code", tableController.checkTableByCode);
+
 // GET /api/tables - Lấy danh sách bàn
 router.get("/", tableController.getTables);
 

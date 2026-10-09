@@ -113,8 +113,15 @@ export default function AdminBillingModal({
               <tbody>
                 {activeBillingBooking.cartItems && activeBillingBooking.cartItems.length > 0 ? (
                   activeBillingBooking.cartItems.map((item, idx) => (
-                    <tr key={item.id || idx} className="border-b border-gray-50/50 last:border-0">
-                      <td className="py-2.5 font-black text-green-955 pr-2 leading-tight">{item.name}</td>
+                    <tr key={item.id ? `${item.id}_${item.priceOptionId || idx}` : idx} className="border-b border-gray-50/50 last:border-0">
+                      <td className="py-2.5 pr-2 leading-tight">
+                        <div className="font-black text-green-955">{item.name}</div>
+                        {(item.priceOptionNote || item.price_option_note) && (
+                          <div className="text-[10px] text-amber-700 font-semibold">
+                            Quy cách: {item.priceOptionNote || item.price_option_note}
+                          </div>
+                        )}
+                      </td>
                       <td className="text-center py-2.5">{item.qty}</td>
                       <td className="text-right py-2.5">{Number(item.price || 0).toLocaleString("vi-VN")}đ</td>
                       <td className="text-right py-2.5 font-black text-gray-700">

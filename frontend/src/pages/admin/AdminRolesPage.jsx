@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { ShieldCheck, Search, ChevronDown, Plus, Crown, BriefcaseBusiness, UserCog } from "lucide-react";
 
 import { getCurrentUser } from "../../utils/auth";
@@ -71,14 +71,31 @@ function AdminRolesPage() {
   }, [users]);
 
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
-      const keyword = removeVietnameseTones(searchQuery.trim());
-      const matchSearch = !keyword || removeVietnameseTones(user.name || user.fullName || "").includes(keyword) || removeVietnameseTones(user.email || "").includes(keyword) || removeVietnameseTones(user.phone || "").includes(keyword) || `tk${String(user.id).padStart(5, "0")}`.includes(keyword);
-      const matchTab = activeTab === "all" || (activeTab === "employee" && ["admin", "manager", "staff"].includes(user.role)) || (activeTab === "customer" && user.role === "user");
-      const matchRole = roleFilter === "all" || user.role === roleFilter;
-      const matchStatus = statusFilter === "all" || user.status === statusFilter;
-      return matchSearch && matchTab && matchRole && matchStatus;
-    });
+    const rawKeyword = String(searchQuery || "").trim();
+    const scored = users
+      .map((user) => {
+        const matchTab = activeTab === "all" || (activeTab === "employee" && ["admin", "manager", "staff"].includes(user.role)) || (activeTab === "customer" && user.role === "user");
+        const matchRole = roleFilter === "all" || user.role === roleFilter;
+        const matchStatus = statusFilter === "all" || user.status === statusFilter;
+        if (!matchTab || !matchRole || !matchStatus) return null;
+
+        const score = rawKeyword ? calculateSearchScore({
+          name: user.name || user.fullName,
+          email: user.email,
+          phone: user.phone,
+          id: `tk${String(user.id).padStart(5, "0")}`,
+          code: String(user.id)
+        }, rawKeyword) : 1;
+
+        if (score === 0) return null;
+        return { user, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scored.sort((a, b) => b.score - a.score);
+    }
+    return scored.map((s) => s.user);
   }, [users, searchQuery, activeTab, roleFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));

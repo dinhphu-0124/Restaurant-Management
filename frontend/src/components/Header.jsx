@@ -1,6 +1,7 @@
 import { checkLogin, clearAuthSession } from "../utils/auth";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import goatIcon from "../assets/images/Icon_De.png";
 import {
   Menu,
@@ -11,7 +12,22 @@ import {
   ClipboardList,
   CalendarCheck,
   LogOut,
+  Home,
+  Utensils,
+  Calendar,
+  Tag,
+  Info,
+  Phone,
+  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
+
+const ROLE_TEXT = {
+  admin: "Quản trị viên",
+  manager: "Quản lý",
+  staff: "Nhân viên",
+  user: "Khách hàng",
+};
 
 function Header({ currentPage = "home" }) {
   const navigate = useNavigate();
@@ -49,16 +65,27 @@ function Header({ currentPage = "home" }) {
   };
 
   const menus = [
-    { name: "Trang chủ", path: "/home", key: "home" },
-    { name: "Thực đơn", path: "/menu", key: "menu" },
-    { name: "Đặt bàn", path: "/booking", key: "booking" },
-    { name: "Khuyến mãi", path: "/deals", key: "deals" },
-    { name: "Giới thiệu", path: "/about", key: "about" },
-    { name: "Liên hệ", path: "/contact", key: "contact" },
+    { name: "Trang chủ", path: "/home", key: "home", icon: Home },
+    { name: "Thực đơn", path: "/menu", key: "menu", icon: Utensils },
+    { name: "Đặt bàn", path: "/booking", key: "booking", icon: Calendar },
+    { name: "Khuyến mãi", path: "/deals", key: "deals", icon: Tag },
+    { name: "Giới thiệu", path: "/about", key: "about", icon: Info },
+    { name: "Liên hệ", path: "/contact", key: "contact", icon: Phone },
   ];
 
   const isLoginPage = location.pathname === "/login";
   const isRegisterPage = location.pathname === "/register";
+
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMenuOpen]);
 
   useEffect(() => {
     const updateAvatar = () => {
@@ -85,7 +112,6 @@ function Header({ currentPage = "home" }) {
       setCartItems(savedCart ? JSON.parse(savedCart) : []);
     };
 
-    // Do not invoke updateCart immediately to prevent state update during sibling render
     window.addEventListener("cartUpdated", () => setTimeout(updateCart, 0));
     window.addEventListener("storage", () => setTimeout(updateCart, 0));
 
@@ -119,26 +145,15 @@ function Header({ currentPage = "home" }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  //thanh xanh trượt
   useEffect(() => {
-    const moveIndicator = () => {
-      const activeItem = navRef.current?.querySelector(`[data-active="true"]`);
+    const activeItem = navRef.current?.querySelector(`[data-active="true"]`);
 
-      if (activeItem) {
-        setIndicatorStyle({
-          x: activeItem.offsetLeft,
-          width: activeItem.offsetWidth,
-        });
-      }
-    };
-
-    moveIndicator();
-
-    window.addEventListener("resize", moveIndicator);
-
-    return () => {
-      window.removeEventListener("resize", moveIndicator);
-    };
+    if (activeItem) {
+      setIndicatorStyle({
+        x: activeItem.offsetLeft,
+        width: activeItem.offsetWidth,
+      });
+    }
   }, [currentPage]);
 
   const handleLogout = () => {
@@ -146,6 +161,7 @@ function Header({ currentPage = "home" }) {
 
     setIsLoggedIn(false);
     setCurrentUser(null);
+    setAvatar(null);
     setIsProfileOpen(false);
     setIsMenuOpen(false);
 
@@ -153,21 +169,21 @@ function Header({ currentPage = "home" }) {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur shadow-sm">
-      <div className="max-w-7xl mx-auto h-16 px-5 flex items-center justify-between">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur shadow-xs">
+      <div className="max-w-7xl mx-auto h-16 px-4 sm:px-5 flex items-center justify-between">
         <Link
           to="/home"
           onClick={scrollToTop}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2.5 shrink-0"
         >
           <img
             src={goatIcon}
             alt="Dê Hương Sơn"
-            className="w-10 h-10 object-contain"
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
           />
           <div>
-            <h1 className="font-bold text-green-800 leading-4">Dê Hương Sơn</h1>
-            <p className="text-xs text-green-700 font-medium">HÀ TĨNH</p>
+            <h1 className="font-extrabold text-green-900 leading-tight text-sm sm:text-base">Dê Hương Sơn</h1>
+            <p className="text-[10px] sm:text-xs text-green-700 font-bold tracking-wider">HÀ TĨNH</p>
           </div>
         </Link>
 
@@ -179,7 +195,7 @@ function Header({ currentPage = "home" }) {
             className="absolute bottom-0 left-0 h-[3px] bg-green-800 rounded-full transition-all duration-700 ease-[cubic-bezier(.22,1,.36,1)]"
             style={{
               width: `${indicatorStyle.width}px`,
-              transform: `translateX(${indicatorStyle.x}px)`,
+              transform: indicatorStyle.x ? `translateX(${indicatorStyle.x}px)` : "none",
             }}
           />
           {menus.map((item) => (
@@ -198,7 +214,7 @@ function Header({ currentPage = "home" }) {
           ))}
         </nav>
 
-        <div className="hidden md:flex gap-3">
+        <div className="hidden lg:flex items-center gap-3">
           {isLoggedIn ? (
             <div
               ref={desktopProfileRef}
@@ -214,11 +230,11 @@ function Header({ currentPage = "home" }) {
                 }, 1000);
               }}
             >
-              <Link to="/cart" className="relative text-green-900 mr-2">
+              <Link to="/cart" className="relative text-green-900 mr-2 p-2 hover:bg-slate-100 rounded-xl transition">
                 <ShoppingCart className="w-5 h-5" />
 
                 {totalCartQty > 0 && (
-                  <span className="absolute -top-5 -right-4 min-w-[22px] h-[22px] px-1.5 bg-red-600 rounded-full text-[11px] font-bold text-white flex items-center justify-center border-2 border-white shadow">
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 bg-red-600 rounded-full text-[10px] font-extrabold text-white flex items-center justify-center border-2 border-white shadow-xs">
                     {totalCartQty}
                   </span>
                 )}
@@ -241,7 +257,7 @@ function Header({ currentPage = "home" }) {
 
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="w-11 h-11 rounded-full bg-green-50 text-green-800 flex items-center justify-center border border-green-700 hover:bg-green-100 transition"
+                className="w-10 h-10 rounded-full bg-green-50 text-green-800 flex items-center justify-center border border-green-700 hover:bg-green-100 transition cursor-pointer"
               >
                 {avatar ? (
                   <img
@@ -250,7 +266,7 @@ function Header({ currentPage = "home" }) {
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (
-                  <User className="w-6 h-6" />
+                  <User className="w-5 h-5" />
                 )}
               </button>
 
@@ -271,11 +287,11 @@ function Header({ currentPage = "home" }) {
               )}
             </div>
           ) : (
-            <>
+            <div className="flex items-center gap-2.5">
               {!isLoginPage && (
                 <Link
                   to="/login"
-                  className="border-2 border-primary text-primary px-5 py-2 rounded-xl font-semibold hover:bg-primary/5 transition-colors"
+                  className="border-2 border-primary text-primary px-4 py-1.5 rounded-xl font-bold text-xs hover:bg-primary/5 transition-colors"
                 >
                   Đăng nhập
                 </Link>
@@ -284,109 +300,250 @@ function Header({ currentPage = "home" }) {
               {!isRegisterPage && (
                 <Link
                   to="/register"
-                  className="bg-primary text-white px-5 py-2 rounded-xl font-semibold shadow-md hover:bg-primary-light hover:shadow-lg transition-all"
+                  className="bg-primary text-white px-4 py-1.5 rounded-xl font-bold text-xs shadow-xs hover:bg-primary-light transition-all"
                 >
                   Đăng ký
                 </Link>
               )}
-            </>
+            </div>
           )}
         </div>
 
-        <button
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="lg:hidden w-10 h-10 rounded-lg border border-green-800 text-green-800 flex items-center justify-center"
-        >
-          {isMenuOpen ? (
-            <X className="w-6 h-6" />
-          ) : (
-            <Menu className="w-6 h-6" />
-          )}
-        </button>
+        <div className="flex lg:hidden items-center gap-2">
+          <Link
+            to="/cart"
+            aria-label="Giỏ hàng"
+            className="w-10 h-10 rounded-xl text-green-900 flex items-center justify-center hover:bg-slate-100 transition relative"
+          >
+            <ShoppingCart className="w-5 h-5" />
+            {totalCartQty > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 bg-red-600 rounded-full text-[10px] font-extrabold text-white flex items-center justify-center border-2 border-white shadow-xs">
+                {totalCartQty}
+              </span>
+            )}
+          </Link>
+
+          <button
+            onClick={() => setIsMenuOpen(true)}
+            aria-label="Mở menu"
+            className="w-10 h-10 rounded-xl border border-green-800 text-green-800 flex items-center justify-center hover:bg-green-50 transition cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
-      {isMenuOpen && (
-        <div className="lg:hidden bg-white border-t border-gray-100 shadow-md">
-          <nav className="px-5 py-4 flex flex-col gap-4 text-sm font-semibold text-green-950">
-            {menus.map((item) => (
-              <Link
-                key={item.key}
-                to={item.path}
+      {isMenuOpen && createPortal(
+        <div className="fixed inset-0 z-[99999] lg:hidden animate-in fade-in duration-200">
+          <div
+            onClick={() => setIsMenuOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            aria-hidden="true"
+          />
+
+          <div className="fixed right-0 top-0 bottom-0 w-[86vw] max-w-[340px] bg-white h-[100dvh] max-h-[100dvh] flex flex-col justify-between shadow-2xl z-10 border-l border-slate-100 animate-in slide-in-from-right duration-250">
+            {/* Top Header */}
+            <div className="p-4 border-b border-emerald-950/20 flex items-center justify-between bg-gradient-to-r from-emerald-900 to-emerald-800 text-white shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/10 p-1 flex items-center justify-center backdrop-blur-xs">
+                  <img
+                    src={goatIcon}
+                    alt="Logo"
+                    className="w-full h-full object-contain brightness-0 invert"
+                  />
+                </div>
+                <div>
+                  <h2 className="font-black text-white text-sm leading-tight">Dê Hương Sơn</h2>
+                  <p className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider">Hà Tĩnh</p>
+                </div>
+              </div>
+
+              <button
                 onClick={() => setIsMenuOpen(false)}
-                className={
-                  currentPage === item.key ? "text-green-800 font-black" : ""
-                }
+                aria-label="Đóng menu"
+                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-white flex items-center justify-center transition cursor-pointer"
               >
-                {item.name}
-              </Link>
-            ))}
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <div className="flex gap-3 pt-3 border-t border-gray-100">
-              {isLoggedIn ? (
-                <div ref={mobileProfileRef} className="w-full">
-                  <div className="flex items-center gap-4">
-                    <Link to="/cart" className="relative text-green-900 mr-2">
-                      <ShoppingCart className="w-5 h-5" />
-
-                      {totalCartQty > 0 && (
-                        <span className="absolute -top-5 -right-4 min-w-[22px] h-[22px] px-1.5 bg-red-600 rounded-full text-[11px] font-bold text-white flex items-center justify-center border-2 border-white shadow">
-                          {totalCartQty}
-                        </span>
-                      )}
-                    </Link>
-
-                    <button
-                      onClick={() => setIsProfileOpen(!isProfileOpen)}
-                      className="w-12 h-12 rounded-full bg-green-50 text-green-800 flex items-center justify-center border border-green-700"
-                    >
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col custom-scrollbar">
+              {/* Profile / Auth Card */}
+              <div className="p-3.5 border-b border-slate-100 bg-slate-50/60 shrink-0">
+                {isLoggedIn && currentUser ? (
+                  <div className="p-3 rounded-2xl bg-white border border-emerald-100 shadow-2xs flex items-center gap-3">
+                    <div className="relative w-11 h-11 rounded-full bg-emerald-100 border-2 border-emerald-300 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
                       {avatar ? (
                         <img
                           src={avatar}
                           alt="Avatar"
-                          className="w-full h-full rounded-full object-cover"
+                          className="w-full h-full object-cover"
                         />
                       ) : (
-                        <User className="w-7 h-7" />
+                        <User className="w-6 h-6 text-emerald-800" />
                       )}
-                    </button>
-                  </div>
-
-                  {isProfileOpen && (
-                    <div className="mt-3">
-                      <ProfileMenu onLogout={handleLogout} mobile />
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></span>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {!isLoginPage && (
-                    <Link
-                      to="/login"
-                      onClick={() => setIsMenuOpen(false)}
-                      className="flex-1 text-center border border-green-800 text-green-800 px-4 py-2 rounded-lg font-semibold"
-                    >
-                      Đăng nhập
-                    </Link>
-                  )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-slate-400">Xin chào</span>
+                        {currentUser?.role && currentUser.role !== "user" && (
+                          <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[9px] font-extrabold rounded-md uppercase tracking-wider">
+                            {ROLE_TEXT[currentUser.role] || "Nhân viên"}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-black text-slate-900 truncate mt-0.5">
+                        {currentUser.fullName || currentUser.name || currentUser.username || "Người dùng"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-2.5">
+                    <p className="text-xs font-bold text-slate-700 leading-snug">
+                      Đăng nhập để nhận ưu đãi thành viên & quản lý đơn hàng
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link
+                        to="/login"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="h-9 rounded-xl border-2 border-emerald-800 text-emerald-800 font-bold text-xs flex items-center justify-center hover:bg-emerald-50 active:bg-emerald-100 transition"
+                      >
+                        Đăng nhập
+                      </Link>
+                      <Link
+                        to="/register"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="h-9 rounded-xl bg-emerald-800 text-white font-bold text-xs flex items-center justify-center shadow-xs hover:bg-emerald-900 active:bg-emerald-950 transition"
+                      >
+                        Đăng ký
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-                  {!isRegisterPage && (
+              {/* Navigation Links */}
+              <nav className="p-3 space-y-1 flex-1">
+                {menus.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentPage === item.key;
+                  return (
                     <Link
-                      to="/register"
+                      key={item.key}
+                      to={item.path}
                       onClick={() => setIsMenuOpen(false)}
-                      className="flex-1 text-center bg-green-800 text-white px-4 py-2 rounded-lg font-semibold"
+                      className={`min-h-[44px] px-3.5 rounded-xl flex items-center justify-between text-sm font-bold transition-all ${
+                        isActive
+                          ? "bg-emerald-700 text-white font-extrabold shadow-sm"
+                          : "text-slate-700 hover:bg-emerald-50/70 hover:text-emerald-900 active:bg-emerald-100/60"
+                      }`}
                     >
-                      Đăng ký
+                      <div className="flex items-center gap-3">
+                        {Icon && (
+                          <Icon
+                            className={`w-4 h-4 ${
+                              isActive ? "text-white" : "text-slate-400"
+                            }`}
+                          />
+                        )}
+                        <span>{item.name}</span>
+                      </div>
+                      {isActive && <span className="w-2 h-2 rounded-full bg-white shadow-xs" />}
                     </Link>
-                  )}
-                </>
+                  );
+                })}
+
+                {/* Account Section */}
+                {isLoggedIn && (
+                  <div className="pt-3 mt-3 border-t border-slate-100 space-y-1">
+                    <p className="px-3.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Tài khoản của bạn
+                    </p>
+                    <Link
+                      to="/profile"
+                      state={{ activeTab: "profile" }}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="min-h-[42px] px-3.5 rounded-xl flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-emerald-50/70 hover:text-emerald-800 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <UserRound className="w-4 h-4 text-emerald-700" />
+                        <span>Hồ sơ cá nhân</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                    </Link>
+                    <Link
+                      to="/profile"
+                      state={{ activeTab: "history" }}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="min-h-[42px] px-3.5 rounded-xl flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-emerald-50/70 hover:text-emerald-800 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <ClipboardList className="w-4 h-4 text-emerald-700" />
+                        <span>Lịch sử đơn hàng</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                    </Link>
+                    <Link
+                      to="/profile"
+                      state={{ activeTab: "bookings" }}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="min-h-[42px] px-3.5 rounded-xl flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-emerald-50/70 hover:text-emerald-800 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <CalendarCheck className="w-4 h-4 text-emerald-700" />
+                        <span>Đặt bàn của tôi</span>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                    </Link>
+
+                    {currentUser?.role && currentUser.role !== "user" && (
+                      <Link
+                        to="/admin/dashboard"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="min-h-[42px] px-3.5 rounded-xl flex items-center justify-between text-xs font-bold text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 transition mt-1"
+                      >
+                        <div className="flex items-center gap-3">
+                          <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                          <span>Trang quản trị</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </nav>
+            </div>
+
+            {/* Bottom Footer Action (Always pinned & safe from home indicator / virtual navbar) */}
+            <div className="p-3.5 border-t border-slate-100 bg-slate-50/90 shrink-0 pb-[calc(1.25rem+env(safe-area-inset-bottom,16px))]">
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full h-11 rounded-xl bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-2 border border-rose-200/80 transition cursor-pointer shadow-2xs"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Đăng xuất tài khoản</span>
+                </button>
+              ) : (
+                <div className="text-center text-[11px] text-slate-500 font-semibold py-1">
+                  Hotline đặt bàn:{" "}
+                  <a href="tel:0387136878" className="font-extrabold text-emerald-800">
+                    038 713 6878
+                  </a>
+                </div>
               )}
             </div>
-          </nav>
-        </div>
+          </div>
+        </div>,
+        document.body
       )}
     </header>
   );
 }
+
 
 function ProfileMenu({ onLogout, mobile = false, onMouseEnter, onMouseLeave }) {
   return (
@@ -395,42 +552,51 @@ function ProfileMenu({ onLogout, mobile = false, onMouseEnter, onMouseLeave }) {
       onMouseLeave={onMouseLeave}
       className={
         mobile
-          ? "w-full bg-white rounded-2xl border border-[#eadfcd] overflow-hidden shadow-md"
-          : "absolute right-0 top-14 w-64 bg-white rounded-2xl shadow-2xl border border-[#eadfcd] overflow-hidden z-[999]"
+          ? "w-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-md"
+          : "absolute right-0 top-14 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[999]"
       }
     >
       <Link
         to="/profile"
         state={{ activeTab: "profile" }}
-        className="flex items-center gap-4 px-5 py-4 text-green-950 font-bold hover:bg-[#fbf7ec] hover:text-green-800 transition"
+        className="flex items-center gap-3.5 px-5 py-3.5 text-slate-800 text-sm font-bold hover:bg-slate-50 hover:text-[#145c30] transition"
       >
-        <UserRound className="w-5 h-5 text-green-800" />
-        Thông tin tài khoản
-      </Link>
-
-      <Link
-        to="/profile"
-        state={{ activeTab: "bookings" }}
-        className="flex items-center gap-4 px-5 py-4 text-green-950 font-bold hover:bg-[#fbf7ec] hover:text-green-800 transition border-t border-[#eadfcd]"
-      >
-        <CalendarCheck className="w-5 h-5 text-[#c99a45]" />
-        Đặt bàn của tôi
+        <UserRound className="w-4 h-4 text-[#15803d]" />
+        Hồ sơ cá nhân
       </Link>
 
       <Link
         to="/profile"
         state={{ activeTab: "history" }}
-        className="flex items-center gap-4 px-5 py-4 text-green-950 font-bold hover:bg-[#fbf7ec] hover:text-green-800 transition border-t border-[#eadfcd]"
+        className="flex items-center gap-3.5 px-5 py-3.5 text-slate-800 text-sm font-bold hover:bg-slate-50 hover:text-[#145c30] transition border-t border-slate-100"
       >
-        <ClipboardList className="w-5 h-5 text-[#c99a45]" />
+        <ClipboardList className="w-4 h-4 text-[#15803d]" />
         Lịch sử đơn hàng
+      </Link>
+
+      <Link
+        to="/profile"
+        state={{ activeTab: "bookings" }}
+        className="flex items-center gap-3.5 px-5 py-3.5 text-slate-800 text-sm font-bold hover:bg-slate-50 hover:text-[#145c30] transition border-t border-slate-100"
+      >
+        <CalendarCheck className="w-4 h-4 text-[#15803d]" />
+        Đặt bàn của tôi
+      </Link>
+
+      <Link
+        to="/profile"
+        state={{ activeTab: "cart" }}
+        className="flex items-center gap-3.5 px-5 py-3.5 text-slate-800 text-sm font-bold hover:bg-slate-50 hover:text-[#145c30] transition border-t border-slate-100"
+      >
+        <ShoppingCart className="w-4 h-4 text-[#15803d]" />
+        Giỏ hàng của tôi
       </Link>
 
       <button
         onClick={onLogout}
-        className="w-full flex items-center gap-4 px-5 py-4 bg-red-50/40 hover:bg-red-50 text-red-600 font-bold border-t border-red-100 transition"
+        className="w-full flex items-center gap-3.5 px-5 py-3.5 bg-rose-50/50 hover:bg-rose-50 text-rose-600 text-sm font-bold border-t border-slate-100 transition cursor-pointer"
       >
-        <LogOut className="w-5 h-5" />
+        <LogOut className="w-4 h-4" />
         Đăng xuất
       </button>
     </div>

@@ -44,12 +44,12 @@ export default function SpacePreviewModal({
             <div className="w-16 h-px bg-[#d6a84f]" />
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-5 shrink-0">
+          <div className="flex flex-wrap gap-2.5 mb-5 shrink-0 justify-center">
             {spaceTabsData.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveSpaceTab(tab.key)}
-                className={`h-11 rounded-xl border font-black transition ${
+                className={`px-5 py-2.5 rounded-xl border font-black text-xs md:text-sm transition shadow-sm ${
                   activeSpaceTab === tab.key
                     ? "bg-green-900 text-white border-green-900"
                     : "bg-white text-green-900 border-[#eadfcd] hover:bg-green-50"
@@ -59,6 +59,12 @@ export default function SpacePreviewModal({
               </button>
             ))}
           </div>
+
+          {activeSpace && (activeSpace.description || activeSpace.detailDescription) && (
+            <div className="mb-4 px-4 py-2.5 rounded-2xl bg-white/70 border border-[#eadfcd] text-xs text-gray-700 shrink-0">
+              <p className="font-semibold">{activeSpace.detailDescription || activeSpace.description}</p>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto pr-1 min-h-0 flex flex-col">
             {(activeSpace?.images || []).length > 0 ? (

@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { tableService } from "../services/tableService";
 import { bookingService } from "../services/bookingService";
+import { spaceService } from "../services/spaceService";
 import { socket } from "../utils/socket";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
+import AppBadge from "../components/ui/AppBadge";
+import { showAdminToast } from "../components/admin/AdminToast";
 
 import goatIcon from "../assets/images/Icon_De.png";
 
@@ -19,9 +22,12 @@ import {
   ShieldCheck,
   ChefHat,
   Headset,
+  Sparkles,
+  Info,
+  Check,
 } from "lucide-react";
 
-//hàm sắp xếp khu vực
+// Hàm chuẩn hóa tiếng Việt
 const removeVietnameseTones = (str = "") =>
   String(str)
     .normalize("NFD")
@@ -33,17 +39,10 @@ const removeVietnameseTones = (str = "") =>
 
 const getAreaPriority = (area) => {
   const name = removeVietnameseTones(area.title || area.name || "");
-
   if (name.includes("vip")) return 0;
-
   const floorMatch = name.match(/tang\s*(\d+)/);
-
-  if (floorMatch) {
-    return Number(floorMatch[1]);
-  }
-
+  if (floorMatch) return Number(floorMatch[1]);
   if (name.includes("tret")) return 1;
-
   return 99;
 };
 
@@ -51,11 +50,9 @@ const sortAreasByPriority = (areas = []) => {
   return [...areas].sort((a, b) => {
     const priorityA = getAreaPriority(a);
     const priorityB = getAreaPriority(b);
-
     if (priorityA !== priorityB) {
       return priorityA - priorityB;
     }
-
     return String(a.title || a.name || "").localeCompare(
       String(b.title || b.name || ""),
       "vi",
@@ -66,9 +63,7 @@ const sortAreasByPriority = (areas = []) => {
 
 function BookingPage() {
   const navigate = useNavigate();
-
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-
   const [showLoginModal, setShowLoginModal] = useState(false);
   const location = useLocation();
 
@@ -83,19 +78,38 @@ function BookingPage() {
     (sum, item) => sum + item.qty,
     0,
   );
-  //kiểm tra đăng nhập
+
   useEffect(() => {
     setIsLoggedIn(checkLogin());
   }, []);
 
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    date: "",
-    time: "",
-    guests: "",
-    note: "",
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = localStorage.getItem("bookingForm");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          name: parsed.name || "",
+          phone: parsed.phone || "",
+          email: parsed.email || "",
+          date: parsed.date || "",
+          time: parsed.time || "",
+          guests: parsed.guests || "",
+          note: parsed.note || "",
+        };
+      }
+    } catch (e) {
+      console.error("Lỗi đọc bookingForm từ localStorage:", e);
+    }
+    return {
+      name: "",
+      phone: "",
+      email: "",
+      date: "",
+      time: "",
+      guests: "",
+      note: "",
+    };
   });
 
   const [errors, setErrors] = useState({});
@@ -103,26 +117,71 @@ function BookingPage() {
   const [adminTables, setAdminTables] = useState([]);
   const [bookings, setBookings] = useState([]);
 
-  const [selectedArea, setSelectedArea] = useState("");
-  const [selectedTable, setSelectedTable] = useState("");
+  const [selectedArea, setSelectedArea] = useState(() => {
+    return localStorage.getItem("bookingSelectedArea") || "";
+  });
+  const [selectedTable, setSelectedTable] = useState(() => {
+    return localStorage.getItem("bookingSelectedTable") || "";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("bookingForm", JSON.stringify(form));
+  }, [form]);
+
+  useEffect(() => {
+    if (selectedArea) {
+      localStorage.setItem("bookingSelectedArea", selectedArea);
+    } else {
+      localStorage.removeItem("bookingSelectedArea");
+    }
+  }, [selectedArea]);
+
+  useEffect(() => {
+    if (selectedTable) {
+      localStorage.setItem("bookingSelectedTable", selectedTable);
+    } else {
+      localStorage.removeItem("bookingSelectedTable");
+    }
+  }, [selectedTable]);
 
   const phoneRegex = /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/;
 
-  // load dữ liệu bàn/khu vực từ API
   useEffect(() => {
     const loadTableData = async () => {
       try {
+        let activeSpaces = [];
+        try {
+          activeSpaces = await spaceService.getActiveSpaces();
+        } catch (spaceErr) {
+          console.warn("Không thể tải hình ảnh không gian:", spaceErr);
+        }
+
         const [apiAreas, apiTables] = await Promise.all([
           tableService.getAreas(),
           tableService.getTables(),
         ]);
 
         const mappedAreas = sortAreasByPriority(
-          apiAreas.map((area) => ({
-            id: String(area.id),
-            title: area.name,
-            text: area.description,
-          })),
+          apiAreas.map((area) => {
+            const matchedSpace = activeSpaces.find(
+              (space) =>
+                String(space.label || "").toLowerCase().trim() ===
+                String(area.name || "").toLowerCase().trim()
+            );
+
+            let spaceImg = "";
+            if (matchedSpace && matchedSpace.images && matchedSpace.images.length > 0) {
+              const coverImg = matchedSpace.images.find((img) => img.isCover);
+              spaceImg = coverImg ? coverImg.url : matchedSpace.images[0].url;
+            }
+
+            return {
+              id: String(area.id),
+              title: area.name,
+              text: area.description,
+              image: spaceImg || area.image || area.imageUrl || "",
+            };
+          }),
         );
 
         const mappedTables = apiTables.map((table) => ({
@@ -138,7 +197,6 @@ function BookingPage() {
         setAdminTables(mappedTables);
 
         const firstArea = mappedAreas[0];
-
         if (!firstArea) {
           setSelectedArea("");
           setSelectedTable("");
@@ -149,13 +207,11 @@ function BookingPage() {
           const existed = mappedAreas.some(
             (area) => String(area.id) === String(prev),
           );
-
           return existed ? prev : firstArea.id;
         });
 
         setSelectedTable((prevTable) => {
           if (prevTable) return prevTable;
-
           const firstAvailableTable = mappedTables.find(
             (table) =>
               String(table.areaId) === String(firstArea.id) &&
@@ -163,7 +219,6 @@ function BookingPage() {
               table.status !== "maintenance" &&
               table.status !== "disabled",
           );
-
           return firstAvailableTable?.code || "";
         });
       } catch (error) {
@@ -178,11 +233,19 @@ function BookingPage() {
     loadTableData();
 
     window.addEventListener("tablesUpdated", loadTableData);
+    window.addEventListener("areasUpdated", loadTableData);
+    window.addEventListener("spacesUpdated", loadTableData);
     socket.on("table_updated", loadTableData);
+    socket.on("spaces_updated", loadTableData);
+    socket.on("areas_updated", loadTableData);
 
     return () => {
       window.removeEventListener("tablesUpdated", loadTableData);
+      window.removeEventListener("areasUpdated", loadTableData);
+      window.removeEventListener("spacesUpdated", loadTableData);
       socket.off("table_updated", loadTableData);
+      socket.off("spaces_updated", loadTableData);
+      socket.off("areas_updated", loadTableData);
     };
   }, []);
 
@@ -197,7 +260,6 @@ function BookingPage() {
         const bookedTables = await bookingService.getBookingAvailability(
           form.date,
         );
-
         setBookings(Array.isArray(bookedTables) ? bookedTables : []);
       } catch (error) {
         console.error(error);
@@ -206,7 +268,6 @@ function BookingPage() {
     };
 
     loadBookingAvailability();
-
     window.addEventListener("bookingsUpdated", loadBookingAvailability);
 
     return () => {
@@ -239,7 +300,7 @@ function BookingPage() {
     selectedTableInfo &&
     Number(form.guests || 0) > 0 &&
     Number(form.guests || 0) > Number(selectedTableInfo.capacity || 0);
-  //hàm kiểm tra bàn bị khóa theo ngày
+
   const isActiveBooking = (booking) => {
     return (
       booking.status === "pending" ||
@@ -251,10 +312,8 @@ function BookingPage() {
     );
   };
 
-  //hàm chỉ đặt theo ngày
   const isTableReservedAtSelectedDate = (tableCode) => {
     if (!form.date) return false;
-
     return bookings.some((booking) => {
       return (
         isActiveBooking(booking) &&
@@ -266,7 +325,6 @@ function BookingPage() {
 
   const getTableBookingAtSelectedDate = (tableCode) => {
     if (!form.date) return null;
-
     return bookings.find((booking) => {
       return (
         isActiveBooking(booking) &&
@@ -276,7 +334,6 @@ function BookingPage() {
     });
   };
 
-  //hàm tìm bàn phù hợp
   const getGuestCount = () => Number(form.guests || 0);
 
   const isUnavailableTable = (table) => {
@@ -302,15 +359,11 @@ function BookingPage() {
         .sort((a, b) => {
           const capacityDiff =
             Number(a.capacity || 0) - Number(b.capacity || 0);
-
           if (capacityDiff !== 0) return capacityDiff;
-
           return String(a.code || "").localeCompare(
             String(b.code || ""),
             "vi",
-            {
-              numeric: true,
-            },
+            { numeric: true },
           );
         })[0] || null
     );
@@ -318,7 +371,6 @@ function BookingPage() {
 
   const handleSelectTable = (table) => {
     if (isAutoArrange) return;
-
     if (isUnavailableTable(table)) return;
 
     const guestCount = getGuestCount();
@@ -326,35 +378,28 @@ function BookingPage() {
 
     if (guestCount > 0 && tableCapacity < guestCount) {
       const suggestedTable = findBestAvailableTable(selectedArea);
-
       if (suggestedTable) {
-        const shouldSwitch = window.confirm(
-          `Bàn ${table.code} chỉ chứa tối đa ${tableCapacity} người, nhưng bạn đang đặt ${guestCount} người.\n\nBạn có muốn chuyển sang bàn ${suggestedTable.code} (${suggestedTable.capacity} người) không?`,
-        );
-
-        if (shouldSwitch) {
-          setSelectedTable(suggestedTable.code);
-        }
-
-        return;
+        showAdminToast({
+          title: "Sức chứa không phù hợp",
+          message: `Bàn ${table.code} chỉ chứa tối đa ${tableCapacity} người. Gợi ý: Bạn có thể chọn bàn ${suggestedTable.code} (${suggestedTable.capacity} chỗ) phù hợp cho ${guestCount} khách.`,
+          type: "warning",
+        });
+      } else {
+        showAdminToast({
+          title: "Sức chứa không phù hợp",
+          message: `Bàn ${table.code} chỉ chứa tối đa ${tableCapacity} người, nhưng bạn đang đặt ${guestCount} người. Vui lòng chọn bàn khác hoặc khu vực khác.`,
+          type: "warning",
+        });
       }
-
-      alert(
-        `Bàn ${table.code} chỉ chứa tối đa ${tableCapacity} người, nhưng bạn đang đặt ${guestCount} người. Hiện khu vực này chưa có bàn phù hợp, vui lòng chọn khu vực khác.`,
-      );
-
       return;
     }
 
     setSelectedTable(table.code);
   };
 
-  //tự chọn bàn khi đổi ngày / khu vực / số khách
   useEffect(() => {
     if (!form.date || !selectedArea) return;
-
     const bestTable = findBestAvailableTable(selectedArea);
-
     setSelectedTable(bestTable?.code || "");
   }, [form.date, form.guests, selectedArea, bookings, adminTables]);
 
@@ -368,11 +413,8 @@ function BookingPage() {
 
   const validateForm = () => {
     const newErrors = {};
+    const now = new Date();
 
-    if (!form.name.trim()) newErrors.name = "Vui lòng nhập họ tên";
-    if (!phoneRegex.test(form.phone)) {
-      newErrors.phone = "Số điện thoại không đúng định dạng Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09)";
-    }
     if (!form.date) newErrors.date = "Vui lòng chọn ngày";
     if (!form.time) newErrors.time = "Vui lòng chọn giờ";
     if (!form.guests || Number(form.guests) <= 0) {
@@ -381,18 +423,10 @@ function BookingPage() {
 
     if (form.date && form.time) {
       const selectedDateTime = new Date(`${form.date}T${form.time}`);
-      const now = new Date();
-
       const selectedDateOnly = new Date(`${form.date}T00:00`);
-      const todayOnly = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-      );
-
+      const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const [hour, minute] = form.time.split(":").map(Number);
       const selectedMinutes = hour * 60 + minute;
-
       const openMinutes = 8 * 60; // 08:00
       const closeMinutes = 22 * 60; // 22:00
 
@@ -400,12 +434,22 @@ function BookingPage() {
         newErrors.date = "Ngày đặt bàn không được nhỏ hơn hôm nay";
       } else if (selectedDateTime <= now) {
         newErrors.time = "Giờ đặt bàn phải lớn hơn thời gian hiện tại";
-      } else if (
-        selectedMinutes < openMinutes ||
-        selectedMinutes > closeMinutes
-      ) {
+      } else if (selectedMinutes < openMinutes || selectedMinutes > closeMinutes) {
         newErrors.time = "Nhà hàng chỉ nhận đặt bàn từ 08:00 đến 22:00";
       }
+    }
+
+    if (!selectedArea) {
+      newErrors.area = "Vui lòng chọn khu vực bạn muốn ngồi";
+    }
+
+    if (!isAutoArrange && !selectedTable) {
+      newErrors.table = "Vui lòng chọn bàn mong muốn";
+    }
+
+    if (!form.name.trim()) newErrors.name = "Vui lòng nhập họ tên";
+    if (!phoneRegex.test(form.phone)) {
+      newErrors.phone = "Số điện thoại không đúng định dạng Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09)";
     }
 
     setErrors(newErrors);
@@ -424,7 +468,11 @@ function BookingPage() {
       const guestCount = Number(form.guests || 0);
 
       if (!selectedTable) {
-        alert("Vui lòng chọn bàn trống để đặt.");
+        showAdminToast({
+          title: "Chưa chọn bàn",
+          message: "Vui lòng chọn bàn trống để đặt.",
+          type: "warning",
+        });
         return;
       }
 
@@ -435,29 +483,29 @@ function BookingPage() {
       );
 
       if (!selectedTableData) {
-        alert("Bàn bạn chọn không hợp lệ. Vui lòng chọn lại bàn.");
+        showAdminToast({
+          title: "Bàn không hợp lệ",
+          message: "Bàn bạn chọn không hợp lệ. Vui lòng chọn lại bàn.",
+          type: "error",
+        });
         return;
       }
 
       if (guestCount > Number(selectedTableData.capacity || 0)) {
         const suggestedTable = findBestAvailableTable(selectedArea);
-
         if (suggestedTable) {
-          const shouldSwitch = window.confirm(
-            `Bàn ${selectedTableData.code} chỉ chứa tối đa ${selectedTableData.capacity} người, nhưng bạn đang đặt ${guestCount} người.\n\nBạn có muốn chuyển sang bàn ${suggestedTable.code} (${suggestedTable.capacity} người) không?`,
-          );
-
-          if (shouldSwitch) {
-            setSelectedTable(suggestedTable.code);
-          }
-
-          return;
+          showAdminToast({
+            title: "Sức chứa không phù hợp",
+            message: `Bàn ${selectedTableData.code} chỉ chứa tối đa ${selectedTableData.capacity} người. Vui lòng chọn bàn ${suggestedTable.code} (${suggestedTable.capacity} người) hoặc bàn khác.`,
+            type: "warning",
+          });
+        } else {
+          showAdminToast({
+            title: "Sức chứa không phù hợp",
+            message: `Hiện khu vực ${currentArea?.title || ""} không có bàn phù hợp cho ${guestCount} người. Vui lòng chọn khu vực khác hoặc liên hệ nhà hàng.`,
+            type: "warning",
+          });
         }
-
-        alert(
-          `Hiện khu vực ${currentArea?.title || ""} không có bàn phù hợp cho ${guestCount} người. Vui lòng chọn khu vực khác hoặc liên hệ nhà hàng.`,
-        );
-
         return;
       }
     }
@@ -465,7 +513,6 @@ function BookingPage() {
     const newBooking = {
       id: new Date().getTime(),
       source: "booking_page",
-
       type: isAutoArrange ? "table_with_food" : "table_only",
 
       customerName: form.name,
@@ -485,11 +532,11 @@ function BookingPage() {
 
       selectedDish: selectedDish
         ? {
-            id: selectedDish.id,
-            name: selectedDish.name,
-            price: selectedDish.price,
-            image: selectedDish.image,
-          }
+          id: selectedDish.id,
+          name: selectedDish.name,
+          price: selectedDish.price,
+          image: selectedDish.image,
+        }
         : null,
 
       cartItems: bookingCartItems,
@@ -502,387 +549,469 @@ function BookingPage() {
       createdAt: new Date().toISOString(),
     };
 
-    try {
-      const savedBooking = await bookingService.createBooking(newBooking);
+    const finalBooking = {
+      ...newBooking,
+      depositAmount: requiresDeposit ? 200000 : 0
+    };
 
+    try {
+      const savedBooking = await bookingService.createBooking(finalBooking);
       setBookings((prev) => [savedBooking, ...prev]);
 
-      navigate("/booking-success");
+      if (requiresDeposit) {
+        localStorage.setItem("currentBooking", JSON.stringify(savedBooking));
+        navigate("/payment-qr");
+      } else {
+        localStorage.removeItem("bookingForm");
+        localStorage.removeItem("bookingSelectedArea");
+        localStorage.removeItem("bookingSelectedTable");
+        navigate("/booking-success");
+      }
     } catch (error) {
       console.error(error);
-      alert(error.message || "Không thể tạo đặt bàn. Vui lòng thử lại.");
+      showAdminToast({
+        title: "Lỗi tạo đặt bàn",
+        message: error.message || "Không thể tạo đặt bàn. Vui lòng thử lại.",
+        type: "error",
+      });
     }
   };
 
+  const isVipArea = String(currentArea?.title || "").toLowerCase().includes("vip");
+  const isLargeGroup = Number(form.guests || 0) >= 15;
+  const requiresDeposit = isVipArea || isLargeGroup;
+
+  const getFinalAreaImage = (area) => {
+    if (!area || !area.image) {
+      return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='250' viewBox='0 0 400 250'%3E%3Crect width='400' height='250' fill='%23f1f5f9'/%3E%3Cpath d='M180 100h40v50h-40z M170 150h60v10h-60z' fill='%2394a3b8'/%3E%3Ctext x='50%25' y='180' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-family='sans-serif' font-size='14'%3EKhông gian nhà hàng%3C/text%3E%3C/svg%3E";
+    }
+    const img = area.image;
+    if (img.startsWith("http://") || img.startsWith("https://") || img.startsWith("data:")) {
+      return img;
+    }
+    if (img.startsWith("/uploads/")) {
+      return `http://localhost:5001${img}`;
+    }
+    return img;
+  };
+
   return (
-    <div className="min-h-screen bg-[#fbf7ec] text-green-950">
-      <main className="max-w-[1500px] mx-auto px-4 md:px-6 py-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <main className="max-w-7xl mx-auto px-3.5 sm:px-5 py-6 md:py-8">
+        {/* Breadcrumb & Header */}
         <div className="mb-6">
-          <h1 className="text-3xl md:text-4xl font-black text-green-900">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#145c30] tracking-tight">
             Đặt bàn tại Dê Hương Sơn
           </h1>
-
-          <div className="flex items-center gap-2 text-sm text-gray-500 mt-3">
-            <Link to="/home" className="hover:text-green-800">
-              Trang chủ
-            </Link>
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500 mt-1.5 font-medium">
+            <Link to="/home" className="hover:text-[#145c30] transition">Trang chủ</Link>
             <span>›</span>
-            <span className="text-green-900 font-medium">Đặt bàn</span>
+            <span className="text-[#145c30] font-bold">Đặt bàn trực tuyến</span>
           </div>
         </div>
-        <div className="bg-[#f5f3e8] border border-[#eadfcd] rounded-xl px-5 py-4 flex items-center gap-3 mb-6">
-          <CalendarDays className="w-6 h-6 text-green-800" />
-          <p className="text-sm font-semibold text-green-950">
-            Đặt bàn trước để được phục vụ tốt nhất. Nhà hàng sẽ chuẩn bị không
-            gian phù hợp khi bạn đến.
-          </p>
-        </div>
-        {/* thông tin món ăn đã chọn nếu có */}
+
+        {/* Selected Dishes Banner if any */}
         {bookingCartItems.length > 0 && (
-          <div className="mb-6 bg-green-50 border border-green-200 rounded-3xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-xl text-green-900">
-                Thông tin món ăn đã chọn
+          <div className="mb-6 bg-emerald-50/80 border border-emerald-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-extrabold text-base sm:text-lg text-[#145c30]">
+                Món ăn đã chọn sẵn ({bookingCartItems.length} món)
               </h3>
             </div>
 
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
               {bookingCartItems.map((item) => (
                 <div
                   key={item.id}
-                  className="w-[135px] shrink-0 bg-white rounded-2xl p-2 border border-green-100"
+                  className="w-[140px] shrink-0 bg-white rounded-2xl p-2.5 border border-emerald-100 shadow-sm"
                 >
                   <img
                     src={item.image}
                     alt={item.name}
                     className="w-full aspect-square object-cover rounded-xl"
                   />
-
-                  <p className="font-bold text-green-900 mt-2 text-sm line-clamp-2 h-10">
+                  <p className="font-bold text-slate-900 mt-2 text-xs line-clamp-2 h-8 leading-snug">
                     {item.name}
                   </p>
-
-                  <div className="pt-2 border-t border-gray-100 mt-2">
-                    <p className="text-xs text-gray-600">SL: {item.qty}</p>
-
-                    <p className="font-bold text-[#b88935] text-base mt-1">
+                  <div className="pt-2 border-t border-slate-100 mt-2 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500 font-medium">SL: {item.qty}</span>
+                    <span className="font-extrabold text-amber-700 text-xs">
                       {item.price.toLocaleString("vi-VN")}đ
-                    </p>
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
-            {/* tạm tính tổng tiền món ăn đã chọn */}
-            <div className="border-t border-green-200 mt-5 pt-4 flex items-center justify-between">
-              <div>
-                <p className="font-bold text-lg">Tạm tính</p>
-                <p className="text-sm font-bold text-green-800 mt-1">
-                  {bookingCartItems.length} món • Tổng số lượng:{" "}
-                  {totalBookingQty}
-                </p>
-              </div>
 
-              <span className="font-black text-2xl text-green-900">
+            <div className="border-t border-emerald-200/80 mt-3 pt-3 flex items-center justify-between text-sm">
+              <div>
+                <span className="text-slate-600 font-medium">Tạm tính thực đơn:</span>
+                <span className="ml-2 font-bold text-emerald-700">Tổng SL: {totalBookingQty}</span>
+              </div>
+              <span className="font-extrabold text-lg text-emerald-800">
                 {subtotal.toLocaleString("vi-VN")}đ
               </span>
             </div>
           </div>
         )}
-        <section className="grid lg:grid-cols-[1fr_520px] gap-6 items-start">
-          {/* LEFT FORM */}
-          <div className="bg-white border border-[#eadfcd] rounded-2xl p-5 md:p-6 shadow-sm">
-            <h2 className="text-lg font-black text-green-950 mb-6">
-              1. THÔNG TIN ĐẶT BÀN
-            </h2>
 
-            <div className="grid md:grid-cols-3 gap-4">
-              <Input
-                label="Ngày đặt bàn"
-                name="date"
-                type="date"
-                value={form.date}
-                onChange={handleChange}
-                icon={<CalendarDays />}
-                error={errors.date}
-              />
+        {/* 2-Column Booking Layout */}
+        <div className="grid lg:grid-cols-[1fr_410px] xl:grid-cols-[1fr_440px] gap-6 items-start">
+          {/* LEFT: STEP CARDS */}
+          <div className="space-y-6">
+            {/* Step 1: Customer Info */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-5">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                  1
+                </span>
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  THÔNG TIN LIÊN HỆ
+                </h2>
+              </div>
 
-              <Input
-                label="Giờ đến"
-                name="time"
-                type="time"
-                value={form.time}
-                onChange={handleChange}
-                icon={<Clock />}
-                error={errors.time}
-                helperText="Giờ mở cửa: 08:00 - 22:00"
-              />
-
-              <Input
-                label="Số lượng khách"
-                name="guests"
-                type="number"
-                value={form.guests}
-                onChange={handleChange}
-                placeholder="Ví dụ: 6"
-                icon={<Users />}
-                error={errors.guests}
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4 mt-5">
-              <Input
-                label="Họ và tên"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="Ví dụ: Nguyễn Văn A"
-                icon={<User />}
-                error={errors.name}
-              />
-
-              <Input
-                label="Số điện thoại"
-                name="phone"
-                value={form.phone}
-                onChange={handleChange}
-                placeholder="Ví dụ: 0901234567"
-                icon={<Phone />}
-                error={errors.phone}
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4 mt-5">
-              <Input
-                label="Email (tùy chọn)"
-                name="email"
-                value={form.email || ""}
-                onChange={handleChange}
-                placeholder="Ví dụ: nguyenvana@gmail.com"
-              />
-
-              <label className="block">
-                <p className="font-bold text-sm mb-2">
-                  Ghi chú / Yêu cầu đặc biệt
-                </p>
-
-                <div className="border border-[#eadfcd] rounded-xl p-4 bg-white">
-                  <textarea
-                    name="note"
-                    value={form.note}
-                    onChange={handleChange}
-                    maxLength={200}
-                    placeholder="Ví dụ: Trang trí sinh nhật, yêu cầu không gian yên tĩnh..."
-                    className="w-full h-16 outline-none resize-none text-sm bg-transparent"
-                  />
-                  <p className="text-right text-xs text-gray-400">
-                    {form.note.length}/200
-                  </p>
-                </div>
-              </label>
-            </div>
-
-            <h2 className="text-lg font-black text-green-950 mt-8 mb-5">
-              2. CHỌN KHU VỰC / BÀN
-            </h2>
-
-            <div className="grid md:grid-cols-3 gap-4">
-              {areas.map((area) => (
-                <AreaCard
-                  key={area.id}
-                  active={String(selectedArea) === String(area.id)}
-                  title={area.title}
-                  text={area.text}
-                  onClick={() => {
-                    const areaId = String(area.id);
-
-                    setSelectedArea(areaId);
-
-                    const bestTable = findBestAvailableTable(areaId);
-
-                    setSelectedTable(bestTable?.code || "");
-                  }}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormInput
+                  label="Họ và tên khách hàng"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  icon={<User className="w-4 h-4" />}
+                  error={errors.name}
                 />
-              ))}
+                <FormInput
+                  label="Số điện thoại"
+                  name="phone"
+                  value={form.phone}
+                  onChange={handleChange}
+                  placeholder="Ví dụ: 0901234567"
+                  icon={<Phone className="w-4 h-4" />}
+                  error={errors.phone}
+                />
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <FormInput
+                  label="Email (nhận xác nhận điện tử)"
+                  name="email"
+                  value={form.email || ""}
+                  onChange={handleChange}
+                  placeholder="Ví dụ: nguyenvana@gmail.com"
+                  icon={<Mail className="w-4 h-4" />}
+                  error={errors.email}
+                />
+                <label className="block text-left w-full">
+                  <span className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
+                    Ghi chú đặc biệt
+                  </span>
+                  <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 focus-within:bg-white focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15 transition">
+                    <textarea
+                      name="note"
+                      value={form.note}
+                      onChange={handleChange}
+                      maxLength={200}
+                      placeholder="Ghi chú thêm (VD: Chuẩn bị ghế trẻ em, trang trí sinh nhật...)"
+                      className="w-full h-11 outline-none focus:outline-none focus:ring-0 border-none resize-none text-xs font-medium text-slate-800 bg-transparent placeholder:text-slate-400"
+                    />
+                    <p className="text-right text-[10px] text-slate-400 font-medium">{form.note.length}/200</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Step 2: Time & Date */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-5">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                  2
+                </span>
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  THỜI GIAN & SỐ LƯỢNG KHÁCH
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormInput
+                  label="Ngày dùng bữa"
+                  name="date"
+                  type="date"
+                  value={form.date}
+                  onChange={handleChange}
+                  icon={<CalendarDays className="w-4 h-4" />}
+                  error={errors.date}
+                />
+                <FormInput
+                  label="Giờ đến"
+                  name="time"
+                  type="time"
+                  value={form.time}
+                  onChange={handleChange}
+                  icon={<Clock className="w-4 h-4" />}
+                  error={errors.time}
+                  helperText="Phục vụ: 08:00 - 22:00"
+                />
+                <FormInput
+                  label="Số lượng khách"
+                  name="guests"
+                  type="number"
+                  value={form.guests}
+                  onChange={handleChange}
+                  placeholder="Ví dụ: 4"
+                  icon={<Users className="w-4 h-4" />}
+                  error={errors.guests}
+                />
+              </div>
+            </div>
+
+            {/* Step 3: Area Selection */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                    3
+                  </span>
+                  <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    CHỌN KHÔNG GIAN HẸN
+                  </h2>
+                </div>
+                {errors.area && <p className="text-rose-600 text-xs font-bold">{errors.area}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+                {areas.map((area) => {
+                  const isSelected = String(selectedArea) === String(area.id);
+                  const isVip = String(area.title).toLowerCase().includes("vip");
+
+                  return (
+                    <div
+                      key={area.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        const areaId = String(area.id);
+                        setSelectedArea(areaId);
+                        const bestTable = findBestAvailableTable(areaId);
+                        setSelectedTable(bestTable?.code || "");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          const areaId = String(area.id);
+                          setSelectedArea(areaId);
+                          const bestTable = findBestAvailableTable(areaId);
+                          setSelectedTable(bestTable?.code || "");
+                        }
+                      }}
+                      className={`group cursor-pointer rounded-2xl overflow-hidden border-2 transition-all duration-200 focus-visible:outline-2 focus-visible:outline-emerald-600 ${isSelected
+                          ? "border-emerald-600 shadow-sm"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
+                    >
+                      <div className="h-28 overflow-hidden relative bg-slate-100">
+                        <img
+                          src={getFinalAreaImage(area)}
+                          alt={area.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                        />
+                        {isVip && (
+                          <span className="absolute top-2 right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider">
+                            Cọc trước
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="p-3 bg-white">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                            {area.title}
+                          </h4>
+                          {isSelected && (
+                            <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center shrink-0">
+                              ✓
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                          {area.text || "Không gian thoáng mát"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* RIGHT TABLE SELECT */}
-          <aside className="bg-white border border-[#eadfcd] rounded-2xl p-5 md:p-6 shadow-sm">
-            <h2 className="text-lg font-black text-green-950 mb-4">
-              3. CHỌN BÀN
-            </h2>
+          {/* RIGHT: TABLE SELECTOR MAP & SUBMISSION */}
+          <aside className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-5 lg:sticky lg:top-24">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                SƠ ĐỒ CHỌN BÀN
+              </h2>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                {currentArea?.title || "Chưa chọn"}
+              </span>
+            </div>
+
+            {errors.table && <p className="text-rose-600 text-xs font-bold">{errors.table}</p>}
 
             {isAutoArrange && (
-              <div className="mb-5 rounded-2xl bg-orange-50 border border-orange-100 p-4 text-orange-700 font-bold text-sm">
-                Bạn đang đặt bàn kèm món ăn. Nhà hàng sẽ tự xếp bàn phù hợp sau
-                khi xác nhận.
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-900 font-semibold text-xs leading-relaxed">
+                Bạn đang đặt kèm thực đơn. Nhà hàng sẽ tự động sắp xếp bàn phù hợp sau khi xác nhận.
               </div>
             )}
 
-            <div className="flex items-center gap-6 text-sm mb-5">
-              <Legend color="bg-green-800" text="Bàn trống" />
-              <Legend color="bg-[#f7dca4]" text="Đang giữ" />
-              <Legend color="bg-red-500" text="Đã đặt" />
+            {/* Legend */}
+            <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-emerald-600"></span>
+                <span>Trống</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-amber-300"></span>
+                <span>Giữ chỗ</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded bg-rose-500"></span>
+                <span>Đã đặt</span>
+              </div>
             </div>
 
-            <p className="font-black text-green-950 mb-4">
-              {currentArea?.title || "Chưa có khu vực"}
-            </p>
-
-            <div className="grid grid-cols-5 gap-3">
+            {/* Table Grid */}
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
               {currentTables.map((table) => {
                 const tableBooking = getTableBookingAtSelectedDate(table.code);
-
-                const holding =
-                  tableBooking?.status === "pending" ||
-                  tableBooking?.status === "Chờ xác nhận";
-
-                const booked =
-                  tableBooking?.status === "confirmed" ||
-                  tableBooking?.status === "Đã xác nhận";
-
-                const disabled =
-                  !!tableBooking ||
-                  table.status === "serving" ||
-                  table.status === "maintenance" ||
-                  table.status === "disabled";
-
+                const holding = tableBooking?.status === "pending" || tableBooking?.status === "Chờ xác nhận";
+                const booked = tableBooking?.status === "confirmed" || tableBooking?.status === "Đã xác nhận";
+                const disabled = !!tableBooking || table.status === "serving" || table.status === "maintenance" || table.status === "disabled";
                 const guestCount = getGuestCount();
+                const insufficientCapacity = guestCount > 0 && Number(table.capacity || 0) < guestCount;
+                const active = String(table.code) === String(selectedTable) && !disabled && !isAutoArrange;
 
-                const insufficientCapacity =
-                  guestCount > 0 && Number(table.capacity || 0) < guestCount;
-
-                const active =
-                  String(table.code) === String(selectedTable) &&
-                  !disabled &&
-                  !isAutoArrange;
                 return (
                   <button
+                    type="button"
                     key={table.id}
                     disabled={disabled || isAutoArrange}
                     onClick={() => handleSelectTable(table)}
-                    className={`relative h-16 rounded-xl border font-black transition ${
-                      active
-                        ? "border-green-800 bg-green-50 text-green-900"
+                    className={`relative h-12 rounded-xl border-2 font-bold transition-all text-xs flex flex-col items-center justify-center ${active
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 font-extrabold"
                         : holding
-                          ? "border-[#f7dca4] bg-[#fff6e6] text-[#c28b2c] cursor-not-allowed"
+                          ? "border-amber-300 bg-amber-50 text-amber-800 cursor-not-allowed"
                           : booked
-                            ? "border-red-200 bg-red-50 text-red-600 cursor-not-allowed"
+                            ? "border-rose-200 bg-rose-50 text-rose-600 cursor-not-allowed"
                             : disabled || isAutoArrange
-                              ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                              ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
                               : insufficientCapacity
-                                ? "border-yellow-300 bg-yellow-50 text-yellow-700 hover:border-yellow-500"
-                                : "border-[#eadfcd] bg-white text-green-950 hover:border-green-700"
-                    }`}
+                                ? "border-amber-300 bg-amber-50/50 text-amber-800 hover:border-amber-500"
+                                : "border-slate-200 bg-white text-slate-800 hover:border-emerald-500"
+                      }`}
                   >
                     {active && !isAutoArrange && (
-                      <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-green-800 text-white text-xs flex items-center justify-center">
-                        ✓
-                      </span>
+                      <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-600 text-white text-[8px] flex items-center justify-center">✓</span>
                     )}
-
-                    <span className="block leading-tight">{table.code}</span>
-
-                    <span className="block text-[10px] mt-1 font-bold opacity-80">
-                      {table.capacity} người
-                    </span>
-
-                    {insufficientCapacity && !disabled && !isAutoArrange && (
-                      <span className="absolute -top-2 -right-2 px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200 text-[10px] font-black">
-                        Thiếu chỗ
-                      </span>
-                    )}
+                    <span>{table.code}</span>
+                    <span className="text-[9px] opacity-75 font-normal">{table.capacity} chỗ</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="mt-5 bg-[#f5f3e8] rounded-2xl p-4 flex gap-4">
-              <div className="w-28 h-24 rounded-xl bg-amber-100 flex items-center justify-center text-xs text-green-800 font-bold shrink-0">
-                Ảnh bàn
-              </div>
-
+            {/* Selected Table Summary Pill */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex items-center justify-between text-xs">
               <div>
-                <h3 className="font-black text-green-900">
-                  {isAutoArrange
-                    ? "Nhà hàng sẽ tự xếp bàn"
-                    : `Bàn ${selectedTable || "chưa chọn"} - ${
-                        currentArea?.title || "Chưa có khu vực"
-                      }`}
-                </h3>
+                <h4 className="font-bold text-slate-900">
+                  {isAutoArrange ? "Nhà hàng tự xếp bàn" : `Bàn đã chọn: ${selectedTable || "Chưa chọn"}`}
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Sức chứa: {selectedTableInfo ? `${selectedTableInfo.capacity} khách` : "Chưa rõ"}
+                </p>
+              </div>
+              {selectedTableOverCapacity && (
+                <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
+                  ⚠ Thiếu chỗ
+                </span>
+              )}
+            </div>
 
-                <ul className="text-sm text-gray-600 mt-2 space-y-1">
-                  <li>
-                    ✓ Sức chứa:{" "}
-                    {isAutoArrange
-                      ? "Theo số khách"
-                      : selectedTableInfo
-                        ? `${selectedTableInfo.capacity} người`
-                        : "Chưa có"}
-                  </li>
-                  {selectedTableOverCapacity && (
-                    <li className="text-red-600 font-bold">
-                      ⚠ Bàn này không đủ sức chứa cho {form.guests} người
-                    </li>
-                  )}
+            {/* Deposit Notice if required */}
+            {requiresDeposit && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs">
+                <h4 className="font-bold text-amber-950 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wide">
+                  <span>⚠️</span> Chính sách đặt cọc giữ bàn
+                </h4>
+                <p className="text-amber-900 leading-relaxed font-medium">
+                  Yêu cầu đặt cọc trước <strong className="text-emerald-700">200.000đ</strong> đối với <strong>{isVipArea ? "phòng VIP" : "tiệc lớn (≥ 15 người)"}</strong>. Số tiền cọc sẽ được tự động khấu trừ vào hóa đơn khi dùng bữa.
+                </p>
+              </div>
+            )}
 
-                  <li>
-                    ✓ Trạng thái:{" "}
-                    {isAutoArrange
-                      ? "Nhà hàng sắp xếp"
-                      : form.date
-                        ? "Có thể đặt trong ngày này"
-                        : "Vui lòng chọn ngày đặt bàn"}
-                  </li>
+            {/* Service Summary Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+              <h4 className="font-extrabold text-slate-900 border-b border-slate-200 pb-2 uppercase tracking-wide">
+                Tóm tắt đặt bàn
+              </h4>
+              <div className="grid grid-cols-2 gap-y-1.5 text-slate-600">
+                <span>Khách hẹn:</span>
+                <span className="font-bold text-slate-900 text-right truncate">{form.name || "Chưa nhập"}</span>
 
-                  <li>✓ Khu vực: {currentArea?.title || "Chưa có khu vực"}</li>
-                </ul>
+                <span>Thời gian:</span>
+                <span className="font-bold text-slate-900 text-right">
+                  {form.date
+                    ? `${form.date.split("-").reverse().join("/")} lúc ${form.time || "..."}`
+                    : "Chưa chọn"}
+                </span>
+
+                <span>Số lượng khách:</span>
+                <span className="font-bold text-slate-900 text-right">{form.guests || 0} người</span>
+
+                <span>Vị trí:</span>
+                <span className="font-bold text-emerald-700 text-right truncate">
+                  {isAutoArrange ? "Tự động sắp xếp" : `${currentArea?.title || "Khu vực"} • Bàn ${selectedTable || "..."}`}
+                </span>
+
+                {requiresDeposit && (
+                  <>
+                    <span className="text-amber-800 font-bold">Tiền cọc giữ chỗ:</span>
+                    <span className="font-black text-right text-amber-700">200.000đ</span>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="mt-6 bg-[#f5f3e8] rounded-xl px-4 py-3 flex items-center gap-3 text-sm text-green-900">
-              <ShieldCheck className="w-5 h-5" />
-              <span>
-                Thông tin của bạn được bảo mật và chỉ sử dụng để xác nhận đặt
-                bàn.
-              </span>
-            </div>
-
+            {/* Submit Button */}
             <button
+              type="button"
               onClick={handleSubmit}
-              className="mt-6 w-full h-14 rounded-2xl bg-primary hover:bg-primary-light text-white font-black shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl active:scale-95"
+              className="w-full h-13 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm tracking-wide"
             >
-              <CalendarDays className="w-5 h-5 inline mr-2" />
-              XÁC NHẬN ĐẶT BÀN
+              <CalendarDays className="w-5 h-5" />
+              {requiresDeposit ? "ĐẶT CỌC & XÁC NHẬN" : "XÁC NHẬN ĐẶT BÀN"}
             </button>
           </aside>
-        </section>
-        <section className="mt-8 bg-[#fff8ea] rounded-2xl p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        </div>
+
+        {/* Value Propositions Footer */}
+        <section className="mt-8 bg-white border border-slate-200/80 rounded-2xl p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <ServiceItem
-            icon={
-              <img
-                src={goatIcon}
-                alt="Dê Hương Sơn"
-                className="w-7 h-7 object-contain"
-              />
-            }
+            icon={<img src={goatIcon} alt="" className="w-6 h-6 object-contain" />}
             title="Nguyên liệu tươi ngon"
             text="Dê núi Hương Sơn tuyển chọn mỗi ngày"
           />
           <ServiceItem
-            icon={<ChefHat className="w-6 h-6" />}
-            title="Phục vụ tận tâm"
-            text="Đội ngũ nhân viên chuyên nghiệp"
+            icon={<ChefHat className="w-5 h-5 text-amber-600" />}
+            title="Phục vụ chuyên nghiệp"
+            text="Đội ngũ đầu bếp & nhân viên tận tâm"
           />
           <ServiceItem
-            icon={<ShieldCheck className="w-6 h-6" />}
-            title="Không chất bảo quản"
-            text="An toàn cho sức khỏe"
+            icon={<ShieldCheck className="w-5 h-5 text-emerald-700" />}
+            title="Vệ sinh an toàn thực phẩm"
+            text="100% tươi sạch, không chất bảo quản"
           />
           <ServiceItem
-            icon={<Headset className="w-6 h-6" />}
-            title="Hỗ trợ 24/7"
-            text="Hotline: 038 713 6878 / 076 877 4619"
+            icon={<Headset className="w-5 h-5 text-blue-600" />}
+            title="Hỗ trợ hotline 24/7"
+            text="038 713 6878 / 076 877 4619"
           />
         </section>
       </main>
@@ -897,7 +1026,7 @@ function BookingPage() {
   );
 }
 
-function Input({
+function FormInput({
   label,
   name,
   value,
@@ -909,80 +1038,43 @@ function Input({
   helperText,
 }) {
   return (
-    <label className="block">
-      <p className="font-bold text-sm mb-2">{label}</p>
-
+    <label className="block text-left w-full">
+      {label && (
+        <span className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
+          {label}
+        </span>
+      )}
       <div
-        className={`h-12 rounded-xl px-4 flex items-center gap-2 bg-white border ${
-          error ? "border-red-500" : "border-[#eadfcd]"
-        }`}
+        className={`h-11 rounded-xl px-3 flex items-center gap-2 bg-slate-50 border transition focus-within:bg-white focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15 ${error ? "border-rose-500 bg-rose-50/50" : "border-slate-200"
+          }`}
       >
-        <span className="text-green-900/60">{icon}</span>
-
+        <span className="text-slate-400 shrink-0">{icon}</span>
         <input
           name={name}
           type={type}
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="w-full outline-none bg-transparent text-green-950 placeholder:text-[#8b978f]"
+          className="w-full outline-none focus:outline-none focus:ring-0 border-none bg-transparent text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400"
         />
       </div>
-
-      {error && <p className="text-red-500 text-xs mt-1 font-bold">{error}</p>}
-
+      {error && <p className="text-rose-600 text-[11px] mt-1 font-semibold">{error}</p>}
       {!error && helperText && (
-        <p className="text-xs text-gray-500 mt-1">{helperText}</p>
+        <p className="text-[11px] text-slate-400 mt-1 font-medium">{helperText}</p>
       )}
     </label>
   );
 }
 
-function AreaCard({ active, title, text, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative min-h-[95px] rounded-xl border p-4 text-left transition ${
-        active
-          ? "border-green-800 bg-green-50"
-          : "border-[#eadfcd] bg-white hover:bg-[#fbf7ec]"
-      }`}
-    >
-      {active && (
-        <span className="absolute top-3 left-3 w-5 h-5 rounded-full bg-green-800 text-white text-xs flex items-center justify-center">
-          ✓
-        </span>
-      )}
-
-      <div className="pt-5">
-        <p className="font-black text-green-900">{title}</p>
-        <p className="text-xs text-gray-500 mt-1">{text}</p>
-      </div>
-    </button>
-  );
-}
-
-function Legend({ color, text }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={`w-4 h-4 rounded ${color}`}></span>
-      <span>{text}</span>
-    </div>
-  );
-}
-
 function ServiceItem({ icon, title, text }) {
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#eadfcd] flex items-center gap-4 hover:shadow-md transition">
-      <div className="w-12 h-12 rounded-full bg-[#fff8ea] flex items-center justify-center text-[#b88935]">
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm border border-slate-100">
         {icon}
       </div>
-
       <div>
-        <p className="font-black text-green-900 text-sm">{title}</p>
-
-        <p className="text-xs text-gray-600 mt-1">{text}</p>
+        <p className="font-bold text-slate-900 text-xs">{title}</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">{text}</p>
       </div>
     </div>
   );

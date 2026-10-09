@@ -455,6 +455,32 @@ exports.getAdvancedDashboardData = async (req, res) => {
     const totalOrdersCount = allTransactions.length;
     const aov = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
 
+    // Tính tổng giá vốn từ booking cart_items
+    let totalBookingCost = 0;
+    currentBookingsMapped.forEach(b => {
+      b.cartItems.forEach(item => {
+        const itemKey = String(item.id || item.code || item.name || '').toLowerCase();
+        const matched = menuMap[itemKey];
+        const cost = matched ? Number(matched.cost_price || 0) : 0;
+        totalBookingCost += cost * Number(item.qty || 0);
+      });
+    });
+
+    // Tính giá vốn từ order_items
+    let totalOrderCost = 0;
+    if (currentOrders.length > 0) {
+      const [costItems] = await db.query(
+        `SELECT unit_cost, qty FROM order_items WHERE order_id IN (?)`,
+        [currentOrders.map(o => o.id)]
+      );
+      costItems.forEach(item => {
+        totalOrderCost += Number(item.unit_cost || 0) * Number(item.qty || 1);
+      });
+    }
+    const totalCost = Math.round(totalBookingCost + totalOrderCost);
+    const grossProfit = Math.round(totalRevenue - totalCost);
+    const grossMargin = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100) : 0;
+
     let compRev = 0, compOrders = 0, compAov = 0, compDiscount = 0;
     compareOrders.forEach(o => {
       compRev += Number(o.total || 0);
@@ -487,11 +513,16 @@ exports.getAdvancedDashboardData = async (req, res) => {
       }
     });
 
+    const dailyCostMap = { ...chartMap };
     const chartData = Object.keys(dailyChartMap).sort().map(d => {
       const parts = d.split('-');
+      const cost = Math.round(dailyCostMap[d] || 0);
+      const revenue = Math.round(dailyChartMap[d] || 0);
       return {
         date: `${parts[2]}/${parts[1]}`,
-        revenue: Math.round(dailyChartMap[d])
+        revenue,
+        cost,
+        profit: revenue - cost
       };
     });
 
@@ -560,7 +591,9 @@ exports.getAdvancedDashboardData = async (req, res) => {
           totalRevenue: { value: Math.round(totalRevenue), growth: calcGrowth(totalRevenue, compRev) },
           orders: { value: totalOrdersCount, growth: calcGrowth(totalOrdersCount, compOrders) },
           aov: { value: Math.round(aov), growth: calcGrowth(aov, compAov) },
-          discount: { value: Math.round(totalDiscount), growth: calcGrowth(totalDiscount, compDiscount) }
+          discount: { value: Math.round(totalDiscount), growth: calcGrowth(totalDiscount, compDiscount) },
+          totalCost: { value: totalCost },
+          grossProfit: { value: grossProfit, margin: Math.round(grossMargin * 10) / 10 }
         },
         paymentSplit: {
           cash: { value: Math.round(cashRev), pct: calcPct(cashRev, totalRevenue) },

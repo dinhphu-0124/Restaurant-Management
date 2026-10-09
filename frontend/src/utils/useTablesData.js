@@ -3,6 +3,7 @@ import { tableService } from "../services/tableService";
 import { bookingService } from "../services/bookingService";
 import { socket } from "./socket";
 import { sortAreasByPriority } from "./tableHelpers";
+import { showAdminToast } from "../components/admin/AdminToast";
 
 /**
  * Custom hook quản lý toàn bộ logic dữ liệu của trang quản lý bàn:
@@ -65,7 +66,7 @@ export function useTablesData({ today }) {
       });
     } catch (error) {
       console.error(error);
-      alert(error.message || "Không thể tải danh sách bàn/khu vực.");
+      showAdminToast({ title: "Lỗi", message: error.message || "Không thể tải danh sách bàn/khu vực.", type: "error" });
     } finally {
       setTableLoading(false);
     }

@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser, getAuthToken } from "../../utils/auth";
 import { canUseAction } from "../../utils/permissions";
 import {
@@ -39,7 +39,7 @@ function AdminMenuPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [badgeFilter, setBadgeFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
   const API_URL = "http://localhost:5001/api/admin/menu-items";
   const [isLoading, setIsLoading] = useState(false);
 
@@ -49,6 +49,9 @@ function AdminMenuPage() {
   const [showOtherCategories, setShowOtherCategories] = useState(false);
   const emptyFoodForm = {
     name: "", image: "", images: [], category: "Dê hấp", subCategory: "", price: "", costPrice: "",
+    priceOptions: [
+      { price: "", costPrice: "", note: "Tiêu chuẩn", displayOrder: 1, isActive: true }
+    ],
     type: "Món chính", status: "selling", badge: "", portion: "", cooking: "", time: "",
     shortDescription: "", description: "", ingredients: "", flavor: "",
   };
@@ -60,7 +63,7 @@ function AdminMenuPage() {
       setIsLoading(true);
       const res = await fetch(API_URL, { headers: { "Authorization": `Bearer ${getAuthToken()}` } });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Không thể lấy danh sách món ăn"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi", message: result.message || "Không thể lấy danh sách món ăn", type: "error" }); return; }
       const foodData = result.data || [];
       setFoods(foodData);
       const viewId = searchParams.get("view");
@@ -68,7 +71,7 @@ function AdminMenuPage() {
         const foodToView = foodData.find((f) => String(f.id) === String(viewId));
         if (foodToView) setSelectedFood(foodToView);
       }
-    } catch (error) { console.error("Lỗi:", error); alert("Không thể kết nối backend"); } finally { setIsLoading(false); }
+    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Lỗi", message: "Không thể kết nối backend", type: "error" }); } finally { setIsLoading(false); }
   };
 
   const fetchCategories = async () => {
@@ -111,18 +114,49 @@ function AdminMenuPage() {
 
   // ─── Filter Logic ─────────────────────────────────────────────────
   const filteredFoods = useMemo(() => {
-    return foods.filter((food) => {
-      const rawKeyword = String(globalSearch || search).toLowerCase().trim();
-      const keyword = removeVietnameseTones(rawKeyword);
-      const rawSearchText = createSearchTextMenu(food).toLowerCase();
-      const normalizedSearchText = removeVietnameseTones(createSearchTextMenu(food));
-      const matchSearch = !keyword || rawSearchText.includes(rawKeyword) || normalizedSearchText.includes(keyword);
-      const matchCategory = categoryFilter === "all" || food.category === categoryFilter;
-      const matchStatus = statusFilter === "all" || food.status === statusFilter;
-      const matchBadge = badgeFilter === "all" || (badgeFilter === "has" && food.badge) || (badgeFilter === "none" && !food.badge);
-      return matchSearch && matchCategory && matchStatus && matchBadge;
+    // Map parent category to list of child category names
+    const parentToChildrenMap = {};
+    (categoriesList || []).forEach((root) => {
+      const childNames = (root.children || []).map((ch) => ch.name);
+      parentToChildrenMap[root.name] = [root.name, ...childNames];
     });
-  }, [foods, search, globalSearch, categoryFilter, statusFilter, badgeFilter]);
+
+    const rawKeyword = String(globalSearch || search || "").trim();
+
+    const scoredFoods = foods
+      .map((food) => {
+        let matchCategory = categoryFilter === "all";
+        if (!matchCategory) {
+          const allowedCategories = parentToChildrenMap[categoryFilter] || [categoryFilter];
+          matchCategory =
+            allowedCategories.includes(food.category) ||
+            allowedCategories.includes(food.parentCategory) ||
+            allowedCategories.includes(food.subCategory) ||
+            food.category === categoryFilter ||
+            food.parentCategory === categoryFilter ||
+            food.subCategory === categoryFilter;
+        }
+
+        const matchStatus = statusFilter === "all" || food.status === statusFilter;
+        const matchBadge = badgeFilter === "all" || (badgeFilter === "has" && food.badge) || (badgeFilter === "none" && !food.badge);
+
+        if (!matchCategory || !matchStatus || !matchBadge) {
+          return null;
+        }
+
+        const score = rawKeyword ? calculateSearchScore(food, rawKeyword) : 1;
+        if (score === 0) return null;
+
+        return { food, score };
+      })
+      .filter(Boolean);
+
+    if (rawKeyword) {
+      scoredFoods.sort((a, b) => b.score - a.score);
+    }
+
+    return scoredFoods.map((item) => item.food);
+  }, [foods, search, globalSearch, categoryFilter, statusFilter, badgeFilter, categoriesList]);
 
   const totalPages = Math.ceil(filteredFoods.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -133,19 +167,103 @@ function AdminMenuPage() {
   // ─── Form Actions ─────────────────────────────────────────────────
   const otherSubCategories = ["Hải sản", "Bò", "Heo", "Gà", "Vịt", "Ếch", "Cá", "Món chay"];
   const categoryOptions = useMemo(() => {
-    return flatCategoriesList.map((c) => {
-      if (c.parent_id) {
-        const parent = flatCategoriesList.find((p) => p.id === c.parent_id);
-        return { label: `— ${c.name} (${parent ? parent.name : ""})`, value: c.name };
+    const options = [];
+    const seenValues = new Set();
+
+    // 1. Traverse hierarchical categoriesList if available
+    if (categoriesList && categoriesList.length > 0) {
+      categoriesList.forEach((root) => {
+        if (root.name === "Tất cả món") return;
+        if (!seenValues.has(root.name)) {
+          options.push({ label: root.name, value: root.name, isParent: true });
+          seenValues.add(root.name);
+        }
+        if (root.children && root.children.length > 0) {
+          root.children.forEach((child) => {
+            if (!seenValues.has(child.name)) {
+              options.push({
+                label: `— ${child.name} (${root.name})`,
+                value: child.name,
+                isChild: true,
+                parentName: root.name,
+              });
+              seenValues.add(child.name);
+            }
+          });
+        }
+      });
+    }
+
+    // 2. Add any remaining items from flatCategoriesList
+    (flatCategoriesList || []).forEach((c) => {
+      if (c.name === "Tất cả món") return;
+      if (!seenValues.has(c.name)) {
+        if (c.parent_id) {
+          const parent = flatCategoriesList.find((p) => p.id === c.parent_id);
+          options.push({
+            label: `— ${c.name} (${parent ? parent.name : ""})`,
+            value: c.name,
+          });
+        } else {
+          options.push({ label: c.name, value: c.name });
+        }
+        seenValues.add(c.name);
       }
-      return { label: c.name, value: c.name };
     });
-  }, [flatCategoriesList]);
+
+    // 3. Add any categories present in current foods list to ensure completeness
+    (foods || []).forEach((food) => {
+      const cat = food.category;
+      if (cat && cat !== "Tất cả món" && !seenValues.has(cat)) {
+        options.push({ label: cat, value: cat });
+        seenValues.add(cat);
+      }
+    });
+
+    return options;
+  }, [categoriesList, flatCategoriesList, foods]);
 
   const openEditFoodModal = (food) => {
     const isOtherCategory = food.parentCategory === "Món khác" || otherSubCategories.includes(food.category);
     setEditingFood(food);
-    setEditForm({ ...emptyFoodForm, ...food, category: isOtherCategory ? "Món khác" : food.category || "Dê hấp", subCategory: isOtherCategory ? food.subCategory || food.category : "", price: String(food.price || ""), costPrice: String(food.costPrice || ""), images: food.images?.length ? food.images : food.image ? [food.image] : [], image: food.image || food.images?.[0] || "", shortDescription: food.shortDescription || "", description: food.description || "", ingredients: food.ingredients || "", flavor: food.flavor || "" });
+    const options = food.priceOptions?.length > 0
+      ? food.priceOptions.map((opt, i) => ({
+          id: opt.id,
+          price: String(opt.price || ""),
+          costPrice: String(opt.costPrice || ""),
+          note: opt.note || "",
+          displayOrder: opt.displayOrder || i + 1,
+          isActive: opt.isActive !== false,
+        }))
+      : [
+          {
+            price: String(food.price || ""),
+            costPrice: String(food.costPrice || ""),
+            note: food.portion || "Tiêu chuẩn",
+            displayOrder: 1,
+            isActive: true,
+          },
+        ];
+
+    setEditForm({
+      ...emptyFoodForm,
+      ...food,
+      priceOptions: options,
+      category: isOtherCategory ? "Món khác" : food.category || "Dê hấp",
+      subCategory: isOtherCategory ? food.subCategory || food.category : "",
+      price: String(food.price || ""),
+      costPrice: String(food.costPrice || ""),
+      images: food.images?.length ? food.images : food.image ? [food.image] : [],
+      image: food.image || food.images?.[0] || "",
+      badge: food.badge || "",
+      portion: food.portion || "",
+      cooking: food.cooking || "",
+      time: food.time || "",
+      shortDescription: food.shortDescription || "",
+      description: food.description || "",
+      ingredients: food.ingredients || "",
+      flavor: food.flavor || "",
+    });
     setAddFormTab("description");
     setShowOtherCategories(isOtherCategory);
     setIsAddFoodOpen(true);
@@ -154,18 +272,18 @@ function AdminMenuPage() {
   const handleFoodImagesChange = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    if (files.some((file) => file.size > 5 * 1024 * 1024)) { alert("Mỗi ảnh không được vượt quá 5MB."); return; }
+    if (files.some((file) => file.size > 5 * 1024 * 1024)) { showAdminToast({ title: "Kích thước quá lớn", message: "Mỗi ảnh không được vượt quá 5MB.", type: "warning" }); return; }
     try {
       const formData = new FormData(); files.forEach((file) => formData.append("images", file));
       const res = await fetch(`${API_URL}/upload`, { method: "POST", headers: { "Authorization": `Bearer ${getAuthToken()}` }, body: formData });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Upload ảnh thất bại"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi upload", message: result.message || "Upload ảnh thất bại", type: "error" }); return; }
       setEditForm((prev) => {
         const uploadedImages = result.images || [];
         const updatedImages = [...(prev.images || []), ...uploadedImages];
         return { ...prev, image: prev.image || uploadedImages[0] || updatedImages[0] || "", images: updatedImages };
       });
-    } catch (error) { console.error("Lỗi:", error); alert("Không thể upload ảnh"); } finally { e.target.value = ""; }
+    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Lỗi", message: "Không thể upload ảnh", type: "error" }); } finally { e.target.value = ""; }
   };
 
   const moveImage = (index, direction) => {
@@ -179,14 +297,37 @@ function AdminMenuPage() {
   };
 
   const saveAddFood = async () => {
-    if (!editForm.name.trim()) { alert("Vui lòng nhập tên món"); return; }
-    if (!editForm.price) { alert("Vui lòng nhập giá bán"); return; }
-    if (editForm.category === "Món khác" && !editForm.subCategory) { alert("Vui lòng chọn mục con"); return; }
+    if (!editForm.name.trim()) { showAdminToast({ title: "Thiếu thông tin", message: "Vui lòng nhập tên món", type: "warning" }); return; }
+    if (editForm.category === "Món khác" && !editForm.subCategory) { showAdminToast({ title: "Thiếu thông tin", message: "Vui lòng chọn mục con", type: "warning" }); return; }
+
+    const validPriceOptions = (editForm.priceOptions || [])
+      .map((opt, i) => ({
+        ...opt,
+        price: Number(String(opt.price || "").replace(/\D/g, "")),
+        costPrice: Number(String(opt.costPrice || "").replace(/\D/g, "")),
+        note: String(opt.note || "").trim(),
+        displayOrder: Number(opt.displayOrder || i + 1),
+        isActive: opt.isActive !== false,
+      }))
+      .filter((opt) => opt.price > 0);
+
+    if (validPriceOptions.length === 0) {
+      showAdminToast({ title: "Thiếu thông tin giá", message: "Vui lòng nhập ít nhất một mức giá hợp lệ lớn hơn 0", type: "warning" });
+      return;
+    }
+
     try {
-      const payload = { ...editForm, price: Number(editForm.price), costPrice: Number(editForm.costPrice || 0), image: editForm.image || editForm.images?.[0] || "/src/assets/images/Menu/default-food.png", images: editForm.images?.length > 0 ? editForm.images : [editForm.image || "/src/assets/images/Menu/default-food.png"] };
+      const payload = {
+        ...editForm,
+        price: validPriceOptions[0].price,
+        costPrice: validPriceOptions[0].costPrice,
+        priceOptions: validPriceOptions,
+        image: editForm.image || editForm.images?.[0] || "/src/assets/images/Menu/default-food.png",
+        images: editForm.images?.length > 0 ? editForm.images : [editForm.image || "/src/assets/images/Menu/default-food.png"],
+      };
       const res = await fetch(editingFood ? `${API_URL}/${editingFood.id}` : API_URL, { method: editingFood ? "PUT" : "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` }, body: JSON.stringify(payload) });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Lưu món ăn thất bại"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi", message: result.message || "Lưu món ăn thất bại", type: "error" }); return; }
       if (editingFood) {
         setFoods((prev) => prev.map((food) => (food.id === editingFood.id ? result.data : food)));
         setSelectedFood(result.data);
@@ -196,7 +337,7 @@ function AdminMenuPage() {
       }
       showAdminToast({ title: editingFood ? "Cập nhật món ăn thành công" : "Thêm món ăn thành công", message: `Đã ${editingFood ? "cập nhật" : "thêm"} món ${result.data?.name || editForm.name}.` });
       setEditingFood(null); setIsAddFoodOpen(false); setEditForm(emptyFoodForm);
-    } catch (error) { console.error("Lỗi:", error); alert("Không thể kết nối backend"); }
+    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Lỗi", message: "Không thể kết nối backend", type: "error" }); }
   };
 
   // ─── Status Actions ───────────────────────────────────────────────
@@ -206,11 +347,11 @@ function AdminMenuPage() {
     try {
       const res = await fetch(`${API_URL}/${food.id}/status`, { method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` }, body: JSON.stringify({ status: nextStatus }) });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Cập nhật trạng thái thất bại"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi", message: result.message || "Cập nhật trạng thái thất bại", type: "error" }); return; }
       setFoods((prev) => prev.map((item) => item.id === food.id ? { ...item, status: nextStatus, updatedAt } : item));
       setSelectedFood((prev) => prev?.id === food.id ? { ...prev, status: nextStatus, updatedAt } : prev);
       showAdminToast({ title: "Cập nhật trạng thái món thành công", message: `Đã ${nextStatus === "selling" ? "bán lại" : "ngừng bán"} món ${food.name}.` });
-    } catch (error) { console.error("Lỗi:", error); alert("Không thể kết nối backend"); }
+    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Lỗi", message: "Không thể kết nối backend", type: "error" }); }
   };
 
   const executeDeleteFood = async (food) => {
@@ -254,52 +395,62 @@ function AdminMenuPage() {
     try {
       const res = await fetch(`${API_URL}/bulk/stop`, { method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` }, body: JSON.stringify({ ids: selectedFoodIds }) });
       const result = await res.json();
-      if (!result.success) { alert(result.message || "Ngừng bán thất bại"); return; }
+      if (!result.success) { showAdminToast({ title: "Lỗi", message: result.message || "Ngừng bán thất bại", type: "error" }); return; }
       setFoods((prev) => prev.map((food) => selectedFoodIds.includes(food.id) ? { ...food, status: "stopped", updatedAt } : food));
       setSelectedFood((prev) => prev && selectedFoodIds.includes(prev.id) ? { ...prev, status: "stopped", updatedAt } : prev);
       showAdminToast({ title: "Ngừng bán hàng loạt thành công", message: `Đã ngừng bán ${selectedFoodIds.length} món đã chọn.` });
       setSelectedFoodIds([]);
-    } catch (error) { console.error("Lỗi:", error); alert("Không thể kết nối backend"); }
+    } catch (error) { console.error("Lỗi:", error); showAdminToast({ title: "Lỗi", message: "Không thể kết nối backend", type: "error" }); }
   };
 
   // ─── RENDER ───────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard icon={<Utensils />} title="Tổng món ăn" value={foods.length} bg="bg-green-50" color="text-green-700" note="so với tuần trước" />
         <StatCard icon={<CheckCircle />} title="Đang bán" value={foods.filter((f) => f.status === "selling").length} bg="bg-blue-50" color="text-blue-600" note="so với tuần trước" />
         <StatCard icon={<PauseCircle />} title="Tạm ngưng" value={foods.filter((f) => f.status === "paused").length} bg="bg-orange-50" color="text-orange-600" note="so với tuần trước" />
         <StatCard icon={<XCircle />} title="Ngừng bán" value={foods.filter((f) => f.status === "stopped").length} bg="bg-red-50" color="text-red-600" note="so với tuần trước" />
       </div>
 
-      <AdminCategoryModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} />
+      <AdminCategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => {
+          setIsCategoryModalOpen(false);
+          fetchCategories();
+        }}
+      />
 
       <div className={`grid grid-cols-1 gap-4 items-start ${selectedFood ? "xl:grid-cols-[minmax(0,1fr)_380px]" : ""}`}>
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {/* Filters */}
           <div className="p-4">
-            <div className="flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
-              <div className={`h-12 rounded-xl border border-gray-100 bg-white px-4 flex items-center gap-3 shadow-sm shrink-0 ${selectedFood ? "w-[260px]" : "w-[360px]"}`}>
+            <div className="flex flex-wrap xl:flex-nowrap items-center gap-3">
+              <div className={`h-12 rounded-xl border border-gray-100 bg-white px-4 flex items-center gap-3 shadow-sm shrink-0 w-full sm:w-auto ${selectedFood ? "xl:w-[260px]" : "xl:w-[360px]"}`}>
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm theo tên món, mã món..." className="w-full min-w-0 outline-none text-sm truncate" />
                 <Search size={18} className="text-gray-400" />
               </div>
-              <SelectBox label="Danh mục" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="all">Tất cả</option>
-                {flatCategoriesList.map(cat => (<option key={cat.id} value={cat.name}>{cat.name}</option>))}
-              </SelectBox>
-              <SelectBox label="Trạng thái" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="all">Tất cả</option>
-                <option value="selling">Đang bán</option>
-                <option value="paused">Tạm ngưng</option>
-                <option value="stopped">Ngừng bán</option>
-              </SelectBox>
-              <SelectBox label="Badge" value={badgeFilter} onChange={(e) => setBadgeFilter(e.target.value)}>
-                <option value="all">Tất cả</option>
-                <option value="has">Có badge</option>
-                <option value="none">Không có</option>
-              </SelectBox>
-              <button onClick={resetFilter} className="h-12 px-2 rounded-xl border border-gray-100 bg-white shadow-sm text-sm font-bold text-gray-600 flex items-center justify-center gap-1 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 w-full sm:w-auto">
+                <SelectBox label="Danh mục" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                  <option value="all">Tất cả danh mục</option>
+                  {categoryOptions.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </SelectBox>
+                <SelectBox label="Trạng thái" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="all">Tất cả</option>
+                  <option value="selling">Đang bán</option>
+                  <option value="paused">Tạm ngưng</option>
+                  <option value="stopped">Ngừng bán</option>
+                </SelectBox>
+                <SelectBox label="Badge" value={badgeFilter} onChange={(e) => setBadgeFilter(e.target.value)}>
+                  <option value="all">Tất cả</option>
+                  <option value="has">Có badge</option>
+                  <option value="none">Không có</option>
+                </SelectBox>
+              </div>
+              <button onClick={resetFilter} title="Đặt lại bộ lọc" className="h-12 px-3 rounded-xl border border-gray-100 bg-white shadow-sm text-sm font-bold text-gray-600 flex items-center justify-center gap-1 hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition w-full sm:w-auto shrink-0">
                 <RotateCcw size={15} /><span className={selectedFood ? "hidden 2xl:inline" : ""}>Xóa</span>
               </button>
             </div>
@@ -331,7 +482,7 @@ function AdminMenuPage() {
             onPageChange={setCurrentPage}
             onLimitChange={setItemsPerPage}
             isLoading={isLoading}
-            limitOptions={[10, 20, 50, 100]}
+            limitOptions={[50, 100, 150, 200]}
           />
         </section>
 
@@ -349,6 +500,7 @@ function AdminMenuPage() {
         categoryOptions={categoryOptions} showOtherCategories={showOtherCategories} setShowOtherCategories={setShowOtherCategories}
         addFormTab={addFormTab} setAddFormTab={setAddFormTab}
         handleFoodImagesChange={handleFoodImagesChange} moveImage={moveImage} saveAddFood={saveAddFood} isLoading={isLoading}
+        onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
       />
 
       {/* Delete Confirmation Modal */}

@@ -207,7 +207,7 @@ function ContactPage() {
           className="bg-white rounded-3xl border border-[#eadfcd] shadow-md p-5 md:p-8"
         >
           <div className="text-center mb-6">
-            <h2 className="text-2xl md:text-2.5xl font-black text-green-900 uppercase">
+            <h2 className="text-2xl md:text-2.5xl font-black text-[#145c30] uppercase">
               Gửi liên hệ cho chúng tôi
             </h2>
 
@@ -327,8 +327,8 @@ function ContactPage() {
 
       {/* SOCIAL */}
       <section className="max-w-7xl mx-auto px-5 pb-10 text-center">
-        <h2 className="text-xl md:text-2xl font-black uppercase text-green-900">
-          Kết nối với chúng tôi
+        <h2 className="text-xl md:text-2xl font-black uppercase text-[#145c30]">
+          Hệ thống chi nhánh
         </h2>
 
         <div className="flex items-center justify-center gap-3 mt-3 mb-7">

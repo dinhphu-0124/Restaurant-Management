@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import AdminHeader from "../components/admin/AdminHeader";
 import { Download, Plus } from "lucide-react";
-import AdminToast from "../components/admin/AdminToast";
+import AppButton from "../components/ui/AppButton";
 import { getCurrentUser, getAuthToken } from "../utils/auth";
 import { canUseAction } from "../utils/permissions";
 import { socket } from "../utils/socket";
@@ -27,6 +27,33 @@ function AdminLayout() {
   
   // Thông báo
   const [notifications, setNotifications] = useState([]);
+  // Mobile sidebar state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  // Desktop sidebar collapsed state (persisted in localStorage)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("admin_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("admin_sidebar_collapsed", String(next));
+      } catch (e) {
+        console.error("Lỗi lưu trạng thái sidebar:", e);
+      }
+      return next;
+    });
+  };
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -69,7 +96,7 @@ function AdminLayout() {
       socket.off("order_updated", handleUpdate);
     };
   }, []);
-  //
+
   const pageInfo = {
     "/admin/dashboard": {
       title: "Tổng quan",
@@ -88,12 +115,12 @@ function AdminLayout() {
       subtitle: "Thêm, sửa và cập nhật món ăn",
     },
     "/admin/tables": {
-      title: "Bàn & Khu vực",
-      subtitle: "Quản lý khu vực và bàn ăn",
+      title: "Quản lý bàn",
+      subtitle: "Quản lý sơ đồ bàn và thêm bàn",
     },
     "/admin/spaces": {
-      title: "Không gian nhà hàng",
-      subtitle: "Quản lý các khu vực và không gian",
+      title: "Không gian & Khu vực",
+      subtitle: "Quản lý không gian nhà hàng và khu vực",
     },
     "/admin/users": {
       title: "Khách hàng",
@@ -119,6 +146,10 @@ function AdminLayout() {
       title: "Vai trò",
       subtitle: "Phân quyền quản trị",
     },
+    "/admin/logs": {
+      title: "Nhật ký hoạt động",
+      subtitle: "Lịch sử thao tác hệ thống",
+    },
   };
 
   const currentPage = pageInfo[location.pathname] || {
@@ -133,76 +164,64 @@ function AdminLayout() {
   const isSpacesPage = location.pathname === "/admin/spaces";
   const isDealsPage = location.pathname === "/admin/deals";
   const isRevenuePage = location.pathname === "/admin/revenue";
-
   const isReportsPage = location.pathname === "/admin/reports";
 
   const pageAction = (isOrdersPage || isRevenuePage || isReportsPage) && canUseAction(currentUser, "reports:export") ? (
-    <button
+    <AppButton
+      variant="primary"
+      size="md"
+      leftIcon={<Download size={16} className="shrink-0" />}
       onClick={() => exportExcelHandler && exportExcelHandler()}
       disabled={!exportExcelHandler}
-      className="
-      h-11 px-4 rounded-2xl bg-green-800 text-white text-sm font-black
-      inline-flex items-center justify-center gap-2 hover:bg-green-900
-      transition disabled:opacity-50 disabled:cursor-not-allowed
-      whitespace-nowrap shrink-0
-    "
+      className="shadow-sm whitespace-nowrap shrink-0 text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10"
     >
-      <Download size={18} />
-      Xuất Excel
-    </button>
-  ) : isMenuPage && headerAction ? (
-    <button
+      <span className="hidden sm:inline">Xuất Excel</span>
+      <span className="sm:hidden">Excel</span>
+    </AppButton>
+  ) : (isMenuPage || isSpacesPage) && headerAction ? (
+    <AppButton
+      variant="primary"
+      size="md"
+      leftIcon={<Plus size={16} className="shrink-0" />}
       onClick={headerAction.onClick}
-      className="
-      h-11 px-4 rounded-2xl bg-green-800 text-white text-sm font-black
-      inline-flex items-center justify-center gap-2 hover:bg-green-900
-      transition whitespace-nowrap shrink-0
-    "
+      className="shadow-sm whitespace-nowrap shrink-0 text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10"
     >
-      <Plus size={18} />
-      {headerAction.label}
-    </button>
+      <span className="hidden sm:inline">{headerAction.label}</span>
+      <span className="sm:hidden">{headerAction.label.replace("Thêm ", "+ ")}</span>
+    </AppButton>
   ) : (isBookingsPage || isTablesPage) && canUseAction(currentUser, "bookings:create") ? (
-    <button
+    <AppButton
+      variant="primary"
+      size="md"
+      leftIcon={<Plus size={16} className="shrink-0" />}
       onClick={() => window.dispatchEvent(new Event("openAddBookingModal"))}
-      className="
-      h-11 px-4 rounded-2xl bg-green-800 text-white text-sm font-black
-      inline-flex items-center justify-center gap-2 hover:bg-green-900
-      transition whitespace-nowrap shrink-0
-    "
+      className="shadow-sm whitespace-nowrap shrink-0 text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10"
     >
-      <Plus size={18} />
-      Thêm đặt bàn
-    </button>
-  ) : isSpacesPage && canUseAction(currentUser, "tables:create") ? (
-    <button
-      onClick={() => window.dispatchEvent(new Event("openAddSpaceModal"))}
-      className="
-      h-11 px-4 rounded-2xl bg-green-800 text-white text-sm font-black
-      inline-flex items-center justify-center gap-2 hover:bg-green-900
-      transition whitespace-nowrap shrink-0
-    "
-    >
-      <Plus size={18} />
-      Thêm không gian
-    </button>
+      <span className="hidden sm:inline">Thêm đặt bàn</span>
+      <span className="sm:hidden">Đặt bàn</span>
+    </AppButton>
   ) : isDealsPage && canUseAction(currentUser, "promotions:create") ? (
-    <button
+    <AppButton
+      variant="primary"
+      size="md"
+      leftIcon={<Plus size={16} className="shrink-0" />}
       onClick={() => window.dispatchEvent(new Event("openAddDealModal"))}
-      className="
-      h-11 px-4 rounded-2xl bg-green-800 text-white text-sm font-black
-      inline-flex items-center justify-center gap-2 hover:bg-green-900
-      transition whitespace-nowrap shrink-0
-    "
+      className="shadow-sm whitespace-nowrap shrink-0 text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10"
     >
-      <Plus size={18} />
-      Thêm khuyến mãi
-    </button>
+      <span className="hidden sm:inline">Thêm khuyến mãi</span>
+      <span className="sm:hidden">Thêm KM</span>
+    </AppButton>
   ) : null;
 
   return (
-    <div className="h-screen bg-[#f8faf8] flex overflow-hidden">
-      <AdminSidebar notifications={notifications} />
+    <div className="h-screen bg-surface-0 flex overflow-hidden font-sans">
+      <AdminSidebar
+        notifications={notifications}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapse}
+      />
 
       <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
         <AdminHeader
@@ -218,32 +237,35 @@ function AdminLayout() {
           dateLabel={dateLabel}
           setDateLabel={setDateLabel}
           hideDatePicker={isMenuPage || isRevenuePage}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
           middleAction={
             isMenuPage ? (
-              <button
-                type="button"
+              <AppButton
+                variant="outline"
+                size="md"
                 onClick={() => window.dispatchEvent(new Event("openCategoryManagementModal"))}
-                className="h-11 px-4 rounded-2xl border border-green-800 text-green-800 bg-white shadow-sm text-sm font-black flex items-center justify-center gap-2 hover:bg-green-50 transition whitespace-nowrap shrink-0"
+                className="whitespace-nowrap shrink-0 bg-white text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10 hidden md:inline-flex"
               >
                 Quản lý danh mục
-              </button>
+              </AppButton>
             ) : null
           }
           notifications={notifications}
         />
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-4 lg:px-5 py-4">
-          <Outlet
-            context={{
-              setExportExcelHandler,
-              setHeaderAction,
-              globalSearch,
-              dateRange,
-              dateMode,
-              dateLabel,
-            }}
-          />
-          <AdminToast />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-5 lg:p-6 bg-surface-0">
+          <div className="max-w-[1600px] mx-auto w-full">
+            <Outlet
+              context={{
+                setExportExcelHandler,
+                setHeaderAction,
+                globalSearch,
+                dateRange,
+                dateMode,
+                dateLabel,
+              }}
+            />
+          </div>
         </main>
       </div>
     </div>

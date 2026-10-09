@@ -20,9 +20,33 @@ function formatPrice(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
 }
 
-function mapPublicMenuItem(row) {
+function mapPublicMenuItem(row, priceOptions = []) {
   const images = parseImages(row.images);
   const image = row.image || images[0] || DEFAULT_IMAGE;
+
+  const activeOptions = (priceOptions || [])
+    .filter((opt) => opt.is_active === 1 || opt.is_active === true)
+    .sort((a, b) => (a.display_order - b.display_order) || (a.id - b.id))
+    .map((opt) => ({
+      id: opt.id,
+      price: Number(opt.price || 0),
+      costPrice: Number(opt.cost_price || 0),
+      note: opt.note || "",
+      displayOrder: Number(opt.display_order || 1),
+      isActive: Boolean(opt.is_active),
+    }));
+
+  const prices =
+    activeOptions.length > 0
+      ? activeOptions.map((o) => o.price)
+      : [Number(row.price || 0)];
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+
+  const formattedPrice =
+    activeOptions.length > 1
+      ? `Từ ${formatPrice(minPrice)}`
+      : formatPrice(minPrice);
 
   return {
     id: row.code,
@@ -34,8 +58,15 @@ function mapPublicMenuItem(row) {
       row.category_name || row.sub_category || row.parent_category || "",
     parentCategory: row.parent_category || row.category_name || "",
     subCategory: row.sub_category || "",
-    price: formatPrice(row.price),
-    priceNumber: Number(row.price || 0),
+    price: formattedPrice,
+    formattedPrice: formattedPrice,
+    priceNumber: minPrice,
+    priceRange:
+      activeOptions.length > 1
+        ? `${formatPrice(minPrice)} - ${formatPrice(maxPrice)}`
+        : formatPrice(minPrice),
+    priceOptions: activeOptions,
+    hasMultiplePrices: activeOptions.length > 1,
     type: row.type || "Món chính",
     status: row.status,
     badge: row.badge || "",
@@ -46,9 +77,12 @@ function mapPublicMenuItem(row) {
     description: row.description || row.short_description || "",
     ingredients: row.ingredients || "",
     flavor: row.flavor || "",
+    highlights: row.highlights || "",
     portion: row.portion || "2 - 3 người",
     cooking: row.cooking || "Nóng hổi",
     time: row.time || "15 - 20 phút",
+    categoryDisplayOrder: Number(row.category_display_order ?? 999),
+    parentDisplayOrder: Number(row.parent_display_order ?? row.category_display_order ?? 999),
   };
 }
 
@@ -57,16 +91,42 @@ router.get("/", async (req, res) => {
     const [rows] = await db.query(`
       SELECT 
         menu_items.*,
-        categories.name AS category_name
+        categories.name AS category_name,
+        categories.display_order AS category_display_order,
+        parent_cats.name AS parent_category_name,
+        parent_cats.display_order AS parent_display_order
       FROM menu_items
       LEFT JOIN categories ON menu_items.category_id = categories.id
+      LEFT JOIN categories parent_cats ON categories.parent_id = parent_cats.id
       WHERE menu_items.status IN ('selling', 'paused')
-      ORDER BY menu_items.id DESC
+      ORDER BY 
+        COALESCE(parent_cats.display_order, categories.display_order, 999) ASC,
+        categories.display_order ASC,
+        menu_items.id ASC
     `);
+
+    const menuItemIds = rows.map((r) => r.id);
+    let optionsByItem = {};
+
+    if (menuItemIds.length > 0) {
+      const [optionsRows] = await db.query(
+        `SELECT * FROM dish_price_options WHERE menu_item_id IN (?) AND is_active = 1 ORDER BY display_order ASC, id ASC`,
+        [menuItemIds],
+      );
+      for (const opt of optionsRows) {
+        if (!optionsByItem[opt.menu_item_id]) {
+          optionsByItem[opt.menu_item_id] = [];
+        }
+        optionsByItem[opt.menu_item_id].push(opt);
+      }
+    }
+
+    const mapped = rows.map((row) => mapPublicMenuItem(row, optionsByItem[row.id] || []));
 
     res.json({
       success: true,
-      data: rows.map(mapPublicMenuItem),
+      data: mapped,
+      items: mapped,
     });
   } catch (error) {
     console.error("Lỗi lấy menu người dùng:", error);

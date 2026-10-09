@@ -10,8 +10,77 @@ export default function AdminRoleTable({
   formatDateTime
 }) {
   return (
-    <div className="overflow-x-auto max-w-full">
-      <table className="min-w-[1080px] w-full table-fixed text-left text-[13px]">
+    <div>
+      {/* Mobile Account Cards (lg:hidden) */}
+      <div className="block lg:hidden divide-y divide-gray-100">
+        {paginatedUsers.length > 0 ? (
+          paginatedUsers.map((user) => {
+            const isSelected = String(selectedAccount?.id) === String(user.id);
+            return (
+              <div
+                key={user.id}
+                onClick={() => setSelectedAccount(user)}
+                className={`p-3.5 space-y-2.5 transition-colors cursor-pointer text-left ${
+                  isSelected ? "bg-emerald-50/70" : "hover:bg-slate-50"
+                }`}
+              >
+                {/* Header: Avatar, Name, Role, Action */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar user={user} />
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 text-sm truncate">
+                        {user.name || user.fullName || "Tài khoản"}
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-semibold truncate">
+                        TK{String(user.id).padStart(5, "0")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedAccount(user);
+                      }}
+                      className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition inline-flex items-center justify-center"
+                      title="Xem chi tiết tài khoản"
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Email & Phone Row */}
+                <div className="text-xs text-slate-500 font-medium space-y-0.5">
+                  <p className="truncate">{user.email || "Chưa có email"}</p>
+                  <p className="truncate text-slate-400">{user.phone || "Chưa có SĐT"}</p>
+                </div>
+
+                {/* Role & Status Footer */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black ${ROLE_BADGE[user.role] || "bg-gray-50 text-gray-600"}`}>
+                    {ROLE_TEXT[user.role] || user.role}
+                  </span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${user.status === "locked" ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
+                    {user.status === "locked" ? "Đã khóa" : "Hoạt động"}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-5 py-12 text-center text-gray-400 font-bold text-xs">
+            Chưa có tài khoản phù hợp
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Table (hidden on mobile, visible on lg+) */}
+      <div className="overflow-x-auto max-w-full hidden lg:block">
+        <table className="min-w-[1080px] w-full table-fixed text-left text-[13px]">
         <thead className="bg-[#fbfcfb] text-gray-600 font-black text-xs uppercase whitespace-nowrap">
           <tr>
             <th className="px-4 py-3 w-[70px]">Avatar</th>
@@ -65,7 +134,7 @@ export default function AdminRoleTable({
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setSelectedAccount(user); }}
                       className="w-8 h-8 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition inline-flex items-center justify-center"
-                      title="Xem chi tiết"
+                      title="Xem chi tiết tài khoản"
                     >
                       <Eye size={17} />
                     </button>
@@ -78,6 +147,7 @@ export default function AdminRoleTable({
           )}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

@@ -53,7 +53,7 @@ function OrderSuccessPage() {
           <CheckCircle className="w-16 h-16 text-green-800" />
         </div>
 
-        <h1 className="text-3xl md:text-4xl font-black text-green-900 mt-5">
+        <h1 className="text-3xl md:text-4xl font-black text-[#145c30] mt-5">
           Đặt hàng thành công
         </h1>
 

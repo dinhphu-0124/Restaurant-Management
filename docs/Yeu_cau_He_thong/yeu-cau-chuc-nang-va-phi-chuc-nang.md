@@ -43,6 +43,7 @@ Dưới đây là các yêu cầu chức năng chính được phân chia theo n
   * Đặt trước bàn ăn theo Ngày, Giờ, Số lượng khách, Khu vực mong muốn.
   * Chọn đặt trước các món ăn (Pre-order) đi kèm.
   * Tự động kiểm tra sức chứa bàn ăn và chống trùng lịch đặt.
+  * **Tự động gửi email thông báo**: Hệ thống gửi email tự động xác nhận trạng thái đặt bàn (Đang chờ xử lý `pending` ngay khi đặt thành công, và Đã xác nhận `confirmed` hoặc Đã hủy `cancelled` khi quản trị viên cập nhật trạng thái).
 
 ### 2.3. Phân hệ Vận hành & Thanh toán tại Bàn (Admin/BackOffice)
 * **Xếp bàn & Nhận bàn**: Xác nhận thông tin phiếu đặt bàn, chọn xếp bàn trống khả dụng trên sơ đồ và chuyển trạng thái sang `serving` khi khách đến.

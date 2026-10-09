@@ -1,23 +1,39 @@
 import React from "react";
+import {
+  X,
+  CalendarPlus,
+  CalendarCheck,
+  User,
+  Phone,
+  Mail,
+  Calendar,
+  Clock,
+  Users as UsersIcon,
+  MapPin,
+  FileText,
+  Check,
+  Info,
+} from "lucide-react";
+import { showAdminToast } from "./AdminToast";
 
 const TABLE_STATUS_STYLE = {
-  available: "border-green-200 bg-green-50 text-green-700",
-  holding: "border-orange-200 bg-orange-50 text-orange-600",
-  booked: "border-red-200 bg-red-50 text-red-600",
-  serving: "border-blue-200 bg-blue-50 text-blue-600",
-  maintenance: "border-gray-200 bg-gray-100 text-gray-500",
-  disabled: "border-gray-200 bg-gray-50 text-gray-400",
-  selected:
-    "border-green-700 bg-green-100 text-green-900 ring-2 ring-green-700",
+  available: "border-emerald-200/90 bg-emerald-50/50 text-emerald-900 hover:border-emerald-400 hover:bg-emerald-100/60",
+  holding: "border-amber-300/80 bg-amber-50/80 text-amber-900",
+  booked: "border-rose-200 bg-rose-50/60 text-rose-800",
+  serving: "border-blue-200 bg-blue-50/70 text-blue-800",
+  maintenance: "border-slate-200 bg-slate-100 text-slate-500",
+  disabled: "border-slate-200 bg-slate-100 text-slate-400",
+  selected: "border-emerald-600 bg-emerald-600 text-white shadow-md shadow-emerald-700/20 ring-2 ring-emerald-600/30",
 };
 
 const TABLE_DOT_STYLE = {
-  available: "bg-green-600",
-  holding: "bg-orange-500",
-  booked: "bg-red-500",
+  available: "bg-emerald-500",
+  holding: "bg-amber-500",
+  booked: "bg-rose-500",
   serving: "bg-blue-500",
-  maintenance: "bg-gray-500",
-  disabled: "bg-gray-300",
+  maintenance: "bg-slate-400",
+  disabled: "bg-slate-300",
+  selected: "bg-white",
 };
 
 const TABLE_STATUS_TEXT = {
@@ -38,8 +54,8 @@ export default function AdminBookingModals({
   setIsAddingBooking,
   addForm,
   setAddForm,
-  areas,
-  tables,
+  areas = [],
+  tables = [],
   getTableStatusForAdd,
   getTableStatusForEdit,
   getEditGuestCount,
@@ -51,120 +67,133 @@ export default function AdminBookingModals({
 }) {
   return (
     <>
+      {/* MODAL CHỈNH SỬA ĐẶT BÀN */}
       {editingBooking && (
-        <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 text-left">
-          <div className={`w-full bg-white rounded-3xl shadow-2xl overflow-hidden transition-all ${editingBooking.status === "completed" ? "max-w-sm" : "max-w-6xl"}`}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-black text-primary">
-                  Chỉnh sửa đặt bàn
-                </h3>
-                <p className="text-sm text-gray-500 font-semibold mt-1">
-                  {editingBooking.bookingCode || `DB${editingBooking.id}`}
-                </p>
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 pb-20 sm:pb-4 text-left animate-in fade-in duration-150">
+          <div
+            className={`w-full bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[calc(100dvh-6rem)] sm:max-h-[85vh] transition-all duration-200 ${editingBooking.status === "completed" ? "max-w-md" : "max-w-4xl"
+              }`}
+          >
+            {/* Header */}
+            <div className="px-4 py-3 sm:px-6 sm:py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+                  <CalendarCheck size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">
+                    Chỉnh sửa đặt bàn
+                  </h3>
+                  <p className="text-[11px] sm:text-xs font-semibold text-emerald-700 mt-0.5 truncate">
+                    Mã: {editingBooking.bookingCode || `DB${editingBooking.id}`} · {editingBooking.customerName || "Khách đặt"}
+                  </p>
+                </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setEditingBooking(null)}
-                className="text-gray-400 hover:text-red-500 text-xl"
+                aria-label="Đóng"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition flex items-center justify-center shrink-0"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
             {editingBooking.status === "completed" ? (
-              <div className="px-6 pt-6 pb-2 flex flex-col items-center text-center gap-3">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/50 to-primary flex items-center justify-center text-white text-3xl shadow-lg">
+              <div className="p-5 flex flex-col items-center text-center gap-3 overflow-y-auto flex-1">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center text-xl shadow-inner">
                   ✓
                 </div>
                 <div>
-                  <p className="text-lg font-black text-primary mt-1">Đặt bàn đã hoàn thành</p>
-                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Lịch đặt <strong className="text-gray-600">{editingBooking.bookingCode || `DB${editingBooking.id}`}</strong> đã hoàn tất phục vụ.
+                  <p className="text-sm sm:text-base font-black text-slate-900 mt-1">Đặt bàn đã hoàn thành</p>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Lịch đặt <strong className="text-slate-800">{editingBooking.bookingCode || `DB${editingBooking.id}`}</strong> đã hoàn tất phục vụ.
                   </p>
                 </div>
-                <div className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-left space-y-1.5 mt-1">
+                <div className="w-full bg-slate-50 rounded-xl p-3 text-left space-y-1.5 mt-1 border border-slate-100 text-xs">
                   {editingBooking.date && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-400 font-semibold">Ngày đặt</span>
-                      <span className="font-black text-gray-700">{formatDate(editingBooking.date)}</span>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-semibold">Ngày đặt</span>
+                      <span className="font-bold text-slate-800">{formatDate(editingBooking.date)}</span>
                     </div>
                   )}
                   {editingBooking.selectedTable && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-400 font-semibold">Bàn</span>
-                      <span className="font-black text-gray-700">{editingBooking.selectedTable}</span>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-semibold">Bàn</span>
+                      <span className="font-bold text-emerald-700">{editingBooking.selectedTable}</span>
                     </div>
                   )}
                   {editingBooking.guests && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-400 font-semibold">Số khách</span>
-                      <span className="font-black text-gray-700">{editingBooking.guests} người</span>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-semibold">Số khách</span>
+                      <span className="font-bold text-slate-800">{editingBooking.guests} người</span>
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 max-h-[70vh] overflow-y-auto">
-                <div className="space-y-4">
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Ngày đặt
-                    </span>
-
-                    <input
-                      type="date"
-                      disabled={editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed"}
-                      value={editForm.date}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          date: e.target.value,
-                          selectedTable:
-                            editingBooking?.date === e.target.value
-                              ? editingBooking?.selectedTable || ""
-                              : "",
-                        }))
-                      }
-                      className="mt-2 w-full h-12 rounded-xl border border-gray-100 px-4 font-bold outline-none shadow-sm"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Trạng thái
-                    </span>
-                    {editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed" ? (
-                      <div className="mt-2 w-full rounded-xl border border-gray-100 px-4 py-3 shadow-sm flex flex-col gap-1 bg-gray-50 select-none">
-                        <span className={`text-sm font-black ${editingBooking.status === "serving" ? "text-amber-600" : editingBooking.status === "completed" ? "text-primary" : "text-blue-600"}`}>
-                          {editingBooking.status === "serving" ? "🟡 Đang phục vụ" : editingBooking.status === "completed" ? "✅ Hoàn thành" : "🔵 Đã xác nhận"}
-                        </span>
-                        <span className="text-xs text-gray-400 leading-snug">
-                          Tất cả thao tác còn lại vui lòng xử lý tại <strong>Sơ đồ bàn</strong>
-                        </span>
-                      </div>
-                    ) : (
-                      <select
-                        value={editForm.status}
+              <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-[270px_1fr] lg:grid-cols-[310px_1fr] gap-3 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+                {/* Cột trái: Form thông tin */}
+                <div className="space-y-2.5">
+                  {/* Hàng 1: Ngày đặt + Trạng thái (2 cột trên mobile) */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                        <Calendar size={12} className="text-slate-400" /> Ngày đặt
+                      </label>
+                      <input
+                        type="date"
+                        disabled={editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed"}
+                        value={editForm.date}
                         onChange={(e) =>
                           setEditForm((prev) => ({
                             ...prev,
-                            status: e.target.value,
+                            date: e.target.value,
+                            selectedTable:
+                              editingBooking?.date === e.target.value
+                                ? editingBooking?.selectedTable || ""
+                                : "",
                           }))
                         }
-                        className="mt-2 w-full h-12 rounded-xl border border-gray-100 px-4 font-bold outline-none shadow-sm"
-                      >
-                        <option value="pending">Chờ xác nhận</option>
-                        <option value="confirmed">Đã xác nhận</option>
-                        <option value="cancelled">Đã hủy</option>
-                      </select>
-                    )}
-                  </label>
+                        className="w-full h-8.5 px-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                      />
+                    </div>
 
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Khu vực
-                    </span>
+                    <div>
+                      <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                        <Info size={12} className="text-slate-400" /> Trạng thái
+                      </label>
+                      {editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed" ? (
+                        <div className="w-full h-8.5 rounded-xl border border-slate-100 px-2 flex items-center bg-slate-50 text-xs">
+                          <span className={`font-black text-[11px] truncate ${editingBooking.status === "serving" ? "text-amber-600" : editingBooking.status === "completed" ? "text-emerald-700" : "text-blue-600"}`}>
+                            {editingBooking.status === "serving" ? "🟡 Đang phục vụ" : editingBooking.status === "completed" ? "✅ Hoàn thành" : "🔵 Đã xác nhận"}
+                          </span>
+                        </div>
+                      ) : (
+                        <select
+                          value={editForm.status}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              status: e.target.value,
+                            }))
+                          }
+                          className="w-full h-8.5 px-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        >
+                          <option value="pending">Chờ xác nhận</option>
+                          <option value="confirmed">Đã xác nhận</option>
+                          <option value="cancelled">Đã hủy</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
 
+                  {/* Khu vực */}
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <MapPin size={12} className="text-slate-400" /> Khu vực
+                    </label>
                     <select
                       disabled={editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed"}
                       value={editForm.selectedArea}
@@ -173,7 +202,6 @@ export default function AdminBookingModals({
                         const area = areas.find(
                           (item) => String(item.id) === String(areaId),
                         );
-
                         setEditForm((prev) => ({
                           ...prev,
                           selectedArea: areaId,
@@ -181,23 +209,22 @@ export default function AdminBookingModals({
                           selectedTable: "",
                         }));
                       }}
-                      className="mt-2 w-full h-12 rounded-xl border border-gray-100 px-4 font-bold outline-none shadow-sm"
+                      className="w-full h-8.5 px-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                     >
                       <option value="">Nhà hàng sắp xếp</option>
-
                       {areas.map((area) => (
                         <option key={area.id} value={String(area.id)}>
                           {area.name}
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
 
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Ghi chú
-                    </span>
-
+                  {/* Ghi chú */}
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <FileText size={12} className="text-slate-400" /> Ghi chú
+                    </label>
                     <textarea
                       disabled={editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed"}
                       value={editForm.note}
@@ -207,45 +234,40 @@ export default function AdminBookingModals({
                           note: e.target.value,
                         }))
                       }
-                      placeholder="Nhập ghi chú đặt bàn..."
-                      className="mt-2 w-full h-24 rounded-xl border border-gray-100 px-4 py-3 text-sm font-semibold outline-none resize-none shadow-sm"
+                      placeholder="Nhập ghi chú..."
+                      className="w-full h-12 sm:h-16 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none resize-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                     />
-                  </label>
+                  </div>
                 </div>
-                {/* phần chọn khu vực + bàn trong popup */}
-                <div className="min-w-0">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <span className="text-sm font-black text-gray-500">
-                        Chọn bàn
-                      </span>
 
-                      <p className="text-xs text-gray-400 font-bold mt-1">
-                        Lịch này có{" "}
-                        {editingBooking?.guests || editingBooking?.people || 0}{" "}
-                        khách. Chỉ nên chọn bàn đủ sức chứa.
-                      </p>
+                {/* Cột phải: Chọn bàn (3 cột gọn gàng) */}
+                <div className="flex flex-col min-w-0 border border-slate-200/80 rounded-2xl p-2.5 sm:p-3 bg-slate-50/40">
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200/80">
+                    <div className="min-w-0">
+                      <span className="text-xs font-black text-slate-800">
+                        Sơ đồ chọn bàn
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium ml-1.5">
+                        (Số khách: <strong className="text-slate-700">{editingBooking?.guests || editingBooking?.people || 0}</strong>)
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs font-bold">
-                      <span className="flex items-center gap-1">
-                        <i className="w-2.5 h-2.5 rounded-full bg-primary" />
-                        Trống
+                    <div className="flex items-center gap-2 text-[10px] font-bold shrink-0">
+                      <span className="flex items-center gap-1 text-emerald-700">
+                        <i className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Trống
                       </span>
-                      <span className="flex items-center gap-1">
-                        <i className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                        Đang giữ
+                      <span className="flex items-center gap-1 text-amber-600">
+                        <i className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Đang giữ
                       </span>
-                      <span className="flex items-center gap-1">
-                        <i className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                        Đã đặt
+                      <span className="flex items-center gap-1 text-rose-600">
+                        <i className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Đã đặt
                       </span>
                     </div>
                   </div>
 
-                  <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-gray-100 p-4">
+                  <div className="flex-1 max-h-[220px] sm:max-h-[280px] md:max-h-none overflow-y-auto custom-scrollbar p-0.5">
                     {editForm.selectedArea ? (
-                      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
                         {tables
                           .filter(
                             (table) =>
@@ -264,15 +286,17 @@ export default function AdminBookingModals({
 
                             const rawStatus = getTableStatusForEdit(table);
                             const status = currentTable ? "selected" : rawStatus;
-
                             const guestCount = getEditGuestCount();
-
                             const insufficientCapacity =
                               guestCount > 0 &&
                               Number(table.capacity || 0) < guestCount;
 
                             const disabled =
-                              currentTable || rawStatus !== "available" || editingBooking?.status === "completed" || editingBooking?.status === "serving" || editingBooking?.status === "confirmed";
+                              currentTable ||
+                              rawStatus !== "available" ||
+                              editingBooking?.status === "completed" ||
+                              editingBooking?.status === "serving" ||
+                              editingBooking?.status === "confirmed";
 
                             return (
                               <button
@@ -286,65 +310,50 @@ export default function AdminBookingModals({
                                     currentTable,
                                   )
                                 }
-                                className={`relative h-14 rounded-xl border font-black transition ${currentTable
-                                    ? TABLE_STATUS_STYLE.selected
-                                    : newSelectedTable
-                                      ? "border-primary bg-primary text-white ring-2 ring-primary/20"
-                                      : disabled
-                                        ? TABLE_STATUS_STYLE[status] ||
-                                        TABLE_STATUS_STYLE.available
-                                        : insufficientCapacity
-                                          ? "border-yellow-300 bg-yellow-50 text-yellow-700"
-                                          : TABLE_STATUS_STYLE[status] ||
-                                          TABLE_STATUS_STYLE.available
-                                  } ${disabled
-                                    ? "cursor-not-allowed opacity-90"
-                                    : "hover:scale-[1.02]"
-                                  }`}
+                                className={`min-h-[46px] sm:min-h-[52px] p-1.5 sm:p-2 rounded-xl border font-bold text-xs transition-all duration-150 flex flex-col items-center justify-center text-center ${currentTable || newSelectedTable
+                                  ? TABLE_STATUS_STYLE.selected
+                                  : disabled
+                                    ? TABLE_STATUS_STYLE[status] || TABLE_STATUS_STYLE.available
+                                    : insufficientCapacity
+                                      ? "border-slate-200 bg-slate-50/80 text-slate-700 hover:border-slate-300"
+                                      : TABLE_STATUS_STYLE[status] || TABLE_STATUS_STYLE.available
+                                  } ${disabled ? "cursor-not-allowed opacity-75" : "hover:-translate-y-0.5 hover:shadow-md cursor-pointer"}`}
                               >
-                                <span
-                                  className={`absolute top-2 left-2 w-2.5 h-2.5 rounded-full ${currentTable || newSelectedTable
-                                      ? "bg-primary"
+                                <div className="flex items-center justify-center gap-1.5 leading-none">
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${currentTable || newSelectedTable
+                                      ? "bg-white ring-1 ring-white/50"
                                       : TABLE_DOT_STYLE[status]
-                                    }`}
-                                />
-
-                                <div className="flex flex-col items-center leading-tight">
-                                  <span>{table.code}</span>
-
-                                  <span className="mt-1 text-[10px] font-black">
-                                    {rawStatus === "available"
-                                      ? `${table.capacity} người`
-                                      : TABLE_STATUS_TEXT[rawStatus] || rawStatus}
+                                      }`}
+                                  />
+                                  <span className="font-black text-xs leading-none">
+                                    {table.code}
                                   </span>
-
-                                  {currentTable && (
-                                    <span className="mt-1 text-[10px] font-black text-primary">
-                                      Bàn đang chọn
-                                    </span>
-                                  )}
-
-                                  {newSelectedTable && (
-                                    <span className="mt-1 text-[10px] font-black text-white">
-                                      Bàn mới
-                                    </span>
-                                  )}
-
-                                  {insufficientCapacity &&
-                                    !disabled &&
-                                    !newSelectedTable && (
-                                      <span className="mt-1 text-[10px] font-black text-yellow-700">
-                                        Thiếu chỗ
-                                      </span>
-                                    )}
                                 </div>
+                                <span className="text-[10px] opacity-80 mt-1 leading-none">
+                                  {rawStatus === "available"
+                                    ? `${table.capacity} chỗ`
+                                    : TABLE_STATUS_TEXT[rawStatus] || rawStatus}
+                                </span>
+
+                                {(currentTable || newSelectedTable) && (
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider mt-0.5 bg-white/20 px-1 py-0.2 rounded leading-none">
+                                    {currentTable ? "Đang chọn" : "Mới chọn"}
+                                  </span>
+                                )}
+
+                                {insufficientCapacity && !disabled && !currentTable && !newSelectedTable && (
+                                  <span className="text-[8.5px] font-bold text-amber-600/90 mt-0.5 leading-none">
+                                    Thiếu chỗ
+                                  </span>
+                                )}
                               </button>
                             );
                           })}
                       </div>
                     ) : (
-                      <div className="py-8 text-center text-gray-400 font-bold">
-                        Vui lòng chọn khu vực để hiển thị bàn
+                      <div className="py-8 text-center text-slate-400 font-medium text-xs">
+                        Vui lòng chọn khu vực bên trái để hiển thị sơ đồ bàn
                       </div>
                     )}
                   </div>
@@ -352,55 +361,83 @@ export default function AdminBookingModals({
               </div>
             )}
 
-            <div className="px-6 py-5 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={() => setEditingBooking(null)}
-                className="h-11 px-5 rounded-xl bg-gray-100 text-gray-600 font-black hover:bg-gray-200"
-              >
-                Đóng
-              </button>
+            {/* Footer */}
+            <div className="px-3.5 py-2.5 sm:px-6 sm:py-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/90 shrink-0">
+              <div className="text-xs font-semibold text-slate-600 truncate">
+                {editForm.selectedTable ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-xs">
+                    <Check size={12} /> Bàn: {editForm.selectedTable}
+                  </span>
+                ) : (
+                  <span className="text-slate-400 text-xs">Chưa chọn bàn</span>
+                )}
+              </div>
 
-              {editingBooking.status !== "completed" && (
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
-                  onClick={saveEditBooking}
-                  className="h-11 px-5 rounded-xl bg-primary text-white font-black hover:bg-primary-dark"
+                  type="button"
+                  onClick={() => setEditingBooking(null)}
+                  className="h-8.5 sm:h-9 px-3 sm:px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
                 >
-                  Lưu thay đổi
+                  Đóng
                 </button>
-              )}
+
+                {editingBooking.status !== "completed" && (
+                  <button
+                    type="button"
+                    onClick={saveEditBooking}
+                    className="h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-xl bg-[#145c30] hover:bg-[#166534] text-white text-xs font-black shadow-sm transition"
+                  >
+                    Lưu thay đổi
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Thêm popup form */}
+      {/* MODAL THÊM ĐẶT BÀN MỚI */}
       {isAddingBooking && (
-        <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center px-4 text-left">
-          <div className="w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-black text-primary">
-                  Thêm đặt bàn
-                </h3>
-                <p className="text-sm text-gray-500 font-semibold mt-1">
-                  Admin tạo lịch đặt bàn mới cho khách hàng
-                </p>
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 pb-20 sm:pb-4 text-left animate-in fade-in duration-150">
+          <div className="w-full max-w-4xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[calc(100dvh-6rem)] sm:max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="px-4 py-3 sm:px-6 sm:py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+                  <CalendarPlus size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight truncate">
+                    Thêm đặt bàn mới
+                  </h3>
+                  <p className="text-[11px] sm:text-xs font-medium text-slate-500 mt-0.5 truncate">
+                    Tạo lịch đặt bàn trực tiếp cho khách hàng
+                  </p>
+                </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setIsAddingBooking(false)}
-                className="text-gray-400 hover:text-red-500 text-xl"
+                aria-label="Đóng"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition flex items-center justify-center shrink-0"
               >
-                ✕
+                <X size={18} />
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 max-h-[72vh] overflow-y-auto">
-              <div className="space-y-4">
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">
-                    Tên khách hàng
-                  </span>
+            {/* Modal Body */}
+            <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-[270px_1fr] lg:grid-cols-[310px_1fr] gap-3 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+              {/* Form Cột Trái: Thông tin khách + thời gian */}
+              <div className="space-y-2.5">
+                {/* Tên khách hàng */}
+                <div>
+                  <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center justify-between mb-1">
+                    <span className="flex items-center gap-1">
+                      <User size={12} className="text-slate-400" /> Tên khách hàng <span className="text-rose-500">*</span>
+                    </span>
+                  </label>
                   <input
                     value={addForm.customerName}
                     onChange={(e) =>
@@ -409,66 +446,70 @@ export default function AdminBookingModals({
                         customerName: e.target.value,
                       }))
                     }
-                    placeholder="Nhập tên khách hàng"
-                    className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                      errors.customerName
-                        ? "border-red-500 ring-2 ring-red-100 bg-red-50/10 placeholder-red-300"
-                        : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    }`}
+                    placeholder="VD: Nguyễn Văn An"
+                    className={`w-full h-8.5 px-2.5 rounded-xl border text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition ${errors.customerName
+                      ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                      : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                      }`}
                   />
                   {errors.customerName && (
-                    <span className="text-xs text-red-500 font-bold mt-1.5 block select-none">
+                    <p className="text-[10px] text-rose-500 font-bold mt-0.5">
                       {errors.customerName}
-                    </span>
+                    </p>
                   )}
-                </label>
+                </div>
 
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">SĐT</span>
-                  <input
-                    value={addForm.phone}
-                    onChange={(e) =>
-                      setAddForm((prev) => ({
-                        ...prev,
-                        phone: e.target.value.replace(/\D/g, ""),
-                      }))
-                    }
-                    placeholder="Nhập số điện thoại"
-                    className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                      errors.phone
-                        ? "border-red-500 ring-2 ring-red-100 bg-red-50/10 placeholder-red-300"
-                        : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    }`}
-                  />
-                  {errors.phone && (
-                    <span className="text-xs text-red-500 font-bold mt-1.5 block select-none">
-                      {errors.phone}
-                    </span>
-                  )}
-                </label>
+                {/* SĐT + Email */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <Phone size={12} className="text-slate-400" /> SĐT <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      value={addForm.phone}
+                      onChange={(e) =>
+                        setAddForm((prev) => ({
+                          ...prev,
+                          phone: e.target.value.replace(/\D/g, ""),
+                        }))
+                      }
+                      placeholder="0987654321"
+                      className={`w-full h-8.5 px-2 rounded-xl border text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition ${errors.phone
+                        ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                        : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        }`}
+                    />
+                    {errors.phone && (
+                      <p className="text-[10px] text-rose-500 font-bold mt-0.5">
+                        {errors.phone}
+                      </p>
+                    )}
+                  </div>
 
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">
-                    Email
-                  </span>
-                  <input
-                    value={addForm.email}
-                    onChange={(e) =>
-                      setAddForm((prev) => ({
-                        ...prev,
-                        email: e.target.value,
-                      }))
-                    }
-                    placeholder="Nhập email nếu có"
-                    className="mt-2 w-full h-12 rounded-xl border border-gray-100 px-4 font-bold outline-none shadow-sm"
-                  />
-                </label>
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <Mail size={12} className="text-slate-400" /> Email
+                    </label>
+                    <input
+                      value={addForm.email}
+                      onChange={(e) =>
+                        setAddForm((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                      placeholder="Tùy chọn"
+                      className="w-full h-8.5 px-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                    />
+                  </div>
+                </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Ngày đặt
-                    </span>
+                {/* Ngày đặt + Giờ */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <Calendar size={12} className="text-slate-400" /> Ngày <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="date"
                       value={addForm.date}
@@ -479,23 +520,22 @@ export default function AdminBookingModals({
                           selectedTable: "",
                         }))
                       }
-                      className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                        errors.date
-                          ? "border-red-500 ring-2 ring-red-100 bg-red-50/10"
-                          : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      }`}
+                      className={`w-full h-8.5 px-2 rounded-xl border text-xs font-semibold text-slate-800 outline-none transition ${errors.date
+                        ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                        : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        }`}
                     />
                     {errors.date && (
-                      <span className="text-xs text-red-500 font-bold mt-1.5 block select-none">
+                      <p className="text-[10px] text-rose-500 font-bold mt-0.5">
                         {errors.date}
-                      </span>
+                      </p>
                     )}
-                  </label>
+                  </div>
 
-                  <label className="block">
-                    <span className="text-sm font-black text-gray-500">
-                      Giờ
-                    </span>
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <Clock size={12} className="text-slate-400" /> Giờ <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="time"
                       value={addForm.time}
@@ -505,87 +545,91 @@ export default function AdminBookingModals({
                           time: e.target.value,
                         }))
                       }
-                      className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                        errors.time
-                          ? "border-red-500 ring-2 ring-red-100 bg-red-50/10"
-                          : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      }`}
+                      className={`w-full h-8.5 px-2 rounded-xl border text-xs font-semibold text-slate-800 outline-none transition ${errors.time
+                        ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                        : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        }`}
                     />
                     {errors.time && (
-                      <span className="text-xs text-red-500 font-bold mt-1.5 block select-none">
+                      <p className="text-[10px] text-rose-500 font-bold mt-0.5">
                         {errors.time}
-                      </span>
+                      </p>
                     )}
-                  </label>
+                  </div>
                 </div>
 
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">
-                    Số khách
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={addForm.guests}
-                    onChange={(e) =>
-                      setAddForm((prev) => ({
-                        ...prev,
-                        guests: e.target.value,
-                        selectedTable: "",
-                      }))
-                    }
-                    className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                      errors.guests
-                        ? "border-red-500 ring-2 ring-red-100 bg-red-50/10"
-                        : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    }`}
-                  />
-                  {errors.guests && (
-                    <span className="text-xs text-red-500 font-bold mt-1.5 block select-none">
-                      {errors.guests}
-                    </span>
-                  )}
-                </label>
+                {/* Số khách + Khu vực */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <UsersIcon size={12} className="text-slate-400" /> Khách <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={addForm.guests}
+                      onChange={(e) =>
+                        setAddForm((prev) => ({
+                          ...prev,
+                          guests: e.target.value,
+                          selectedTable: "",
+                        }))
+                      }
+                      className={`w-full h-8.5 px-2 rounded-xl border text-xs font-semibold text-slate-800 outline-none transition ${errors.guests
+                        ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                        : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        }`}
+                    />
+                    {errors.guests && (
+                      <p className="text-[10px] text-rose-500 font-bold mt-0.5">
+                        {errors.guests}
+                      </p>
+                    )}
+                  </div>
 
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">
-                    Khu vực
-                  </span>
-                  <select
-                    value={addForm.selectedArea}
-                    onChange={(e) => {
-                      const areaId = String(e.target.value);
-                      const area = areas.find(
-                        (item) => String(item.id) === areaId,
-                      );
+                  <div>
+                    <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                      <MapPin size={12} className="text-slate-400" /> Khu vực <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={addForm.selectedArea}
+                      onChange={(e) => {
+                        const areaId = String(e.target.value);
+                        const area = areas.find(
+                          (item) => String(item.id) === areaId,
+                        );
+                        setAddForm((prev) => ({
+                          ...prev,
+                          selectedArea: areaId,
+                          selectedAreaTitle: area?.name || "",
+                          selectedTable: "",
+                        }));
+                      }}
+                      className={`w-full h-8.5 px-2 rounded-xl border text-xs font-semibold text-slate-800 outline-none transition ${errors.selectedArea
+                        ? "border-rose-400 ring-1 ring-rose-100 bg-rose-50/20"
+                        : "border-slate-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        }`}
+                    >
+                      <option value="">Chọn khu vực</option>
+                      {areas.map((area) => (
+                        <option key={area.id} value={String(area.id)}>
+                          {area.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.selectedArea && (
+                      <p className="text-[10px] text-rose-500 font-bold mt-0.5">
+                        {errors.selectedArea}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-                      setAddForm((prev) => ({
-                        ...prev,
-                        selectedArea: areaId,
-                        selectedAreaTitle: area?.name || "",
-                        selectedTable: "",
-                      }));
-                    }}
-                    className={`mt-2 w-full h-12 rounded-xl border px-4 font-bold outline-none shadow-sm transition-all duration-200 ${
-                      errors.selectedArea
-                        ? "border-red-500 ring-2 ring-red-100 bg-red-50/10"
-                        : "border-gray-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    }`}
-                  >
-                    <option value="">Chọn khu vực</option>
-
-                    {areas.map((area) => (
-                      <option key={area.id} value={String(area.id)}>
-                        {area.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-black text-gray-500">
-                    Ghi chú
-                  </span>
+                {/* Ghi chú */}
+                <div>
+                  <label className="text-[11px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                    <FileText size={12} className="text-slate-400" /> Ghi chú
+                  </label>
                   <textarea
                     value={addForm.note}
                     onChange={(e) =>
@@ -594,155 +638,165 @@ export default function AdminBookingModals({
                         note: e.target.value,
                       }))
                     }
-                    placeholder="Nhập ghi chú đặt bàn..."
-                    className="mt-2 w-full h-24 rounded-xl border border-gray-100 px-4 py-3 text-sm font-semibold outline-none resize-none shadow-sm"
+                    placeholder="Ghi chú thêm..."
+                    className="w-full h-12 sm:h-16 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none resize-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                   />
-                </label>
+                </div>
               </div>
 
-              <div className="min-w-0">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <span className="text-sm font-black text-gray-500">
-                      Chọn bàn
+              {/* Sơ đồ chọn bàn (Cột Phải - 3 cột bàn gọn gàng) */}
+              <div className="flex flex-col min-w-0 border border-slate-200/80 rounded-2xl p-2.5 sm:p-3 bg-slate-50/40">
+                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200/80">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-slate-900">
+                      Sơ đồ chọn bàn
                     </span>
-                    <p className="text-xs text-gray-400 font-bold mt-1">
-                      Lịch này có {addForm.guests || 0} khách. Chỉ nên chọn bàn
-                      đủ sức chứa.
-                    </p>
+                    <span className="text-[11px] text-slate-500 font-medium ml-1.5">
+                      (Yêu cầu: <strong className="text-slate-800">{addForm.guests || 1} khách</strong>)
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-3 text-xs font-bold">
-                    <span className="flex items-center gap-1">
-                      <i className="w-2.5 h-2.5 rounded-full bg-primary" />
-                      Trống
+                  <div className="flex items-center gap-2 text-[10px] font-bold shrink-0">
+                    <span className="flex items-center gap-1 text-emerald-700">
+                      <i className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Trống
                     </span>
-                    <span className="flex items-center gap-1">
-                      <i className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                      Đang giữ
+                    <span className="flex items-center gap-1 text-amber-600">
+                      <i className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Đang giữ
                     </span>
-                    <span className="flex items-center gap-1">
-                      <i className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                      Đã đặt
+                    <span className="flex items-center gap-1 text-rose-600">
+                      <i className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Đã đặt
                     </span>
                   </div>
                 </div>
 
-                <div className="max-h-[500px] overflow-y-auto rounded-2xl border border-gray-100 p-4">
+                <div className="flex-1 max-h-[220px] sm:max-h-[280px] md:max-h-none overflow-y-auto custom-scrollbar p-0.5">
                   {addForm.selectedArea ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
-                      {tables
-                        .filter(
-                          (table) =>
-                            String(table.areaId) ===
-                            String(addForm.selectedArea),
-                        )
-                        .map((table) => {
-                          const status = getTableStatusForAdd(table);
-                          const isSelected =
-                            String(addForm.selectedTable) ===
-                            String(table.code);
+                    (() => {
+                      const areaTables = tables.filter(
+                        (table) => String(table.areaId) === String(addForm.selectedArea),
+                      );
 
-                          const guestCount = Number(addForm.guests || 0);
+                      if (areaTables.length === 0) {
+                        return (
+                          <div className="py-8 text-center text-slate-400 font-medium text-xs">
+                            Khu vực này hiện chưa có bàn nào
+                          </div>
+                        );
+                      }
 
-                          const insufficientCapacity =
-                            guestCount > 0 &&
-                            Number(table.capacity || 0) < guestCount;
+                      return (
+                        <div className="grid grid-cols-3 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
+                          {areaTables.map((table) => {
+                            const status = getTableStatusForAdd(table);
+                            const isSelected = String(addForm.selectedTable) === String(table.code);
+                            const guestCount = Number(addForm.guests || 0);
+                            const insufficientCapacity =
+                              guestCount > 0 && Number(table.capacity || 0) < guestCount;
+                            const disabled = status !== "available";
 
-                          const disabled = status !== "available";
-
-                          return (
-                            <button
-                              key={table.id}
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => {
-                                if (disabled) return;
-
-                                if (insufficientCapacity) {
-                                  alert(
-                                    `Bàn ${table.code} chỉ chứa tối đa ${table.capacity} người. Vui lòng chọn bàn khác phù hợp hơn.`,
-                                  );
-                                  return;
-                                }
-
-                                setAddForm((prev) => ({
-                                  ...prev,
-                                  selectedTable: table.code,
-                                }));
-                              }}
-                              className={`relative h-16 rounded-xl border font-black transition ${isSelected
-                                  ? insufficientCapacity
-                                    ? "border-red-600 bg-red-50 text-red-600 ring-2 ring-red-300"
-                                    : "border-primary bg-primary text-white ring-2 ring-primary/20"
+                            return (
+                              <button
+                                key={table.id}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => {
+                                  if (disabled) return;
+                                  if (insufficientCapacity) {
+                                    showAdminToast({
+                                      title: "Sức chứa không phù hợp",
+                                      message: `Bàn ${table.code} chỉ chứa tối đa ${table.capacity} người. Vui lòng chọn bàn khác phù hợp hơn.`,
+                                      type: "warning",
+                                    });
+                                    return;
+                                  }
+                                  setAddForm((prev) => ({
+                                    ...prev,
+                                    selectedTable: table.code,
+                                  }));
+                                }}
+                                className={`min-h-[46px] sm:min-h-[52px] p-1.5 sm:p-2 rounded-xl border font-bold text-xs transition-all duration-150 flex flex-col items-center justify-center text-center ${isSelected
+                                  ? TABLE_STATUS_STYLE.selected
                                   : disabled
-                                    ? TABLE_STATUS_STYLE[status] ||
-                                    TABLE_STATUS_STYLE.available
+                                    ? TABLE_STATUS_STYLE[status] || TABLE_STATUS_STYLE.available
                                     : insufficientCapacity
-                                      ? "border-red-500 bg-red-50 text-red-600"
-                                      : TABLE_STATUS_STYLE[status] ||
-                                      TABLE_STATUS_STYLE.available
-                                } ${disabled
-                                  ? "cursor-not-allowed opacity-80"
-                                  : "hover:scale-[1.02]"
-                                }`}
-                            >
-                              <span
-                                className={`absolute top-2 left-2 w-2.5 h-2.5 rounded-full ${isSelected
-                                    ? "bg-white"
-                                    : TABLE_DOT_STYLE[status]
-                                  }`}
-                              />
+                                      ? "border-slate-200 bg-slate-50/80 text-slate-700 hover:border-slate-300"
+                                      : TABLE_STATUS_STYLE[status] || TABLE_STATUS_STYLE.available
+                                  } ${disabled ? "cursor-not-allowed opacity-70" : "hover:-translate-y-0.5 hover:shadow-md cursor-pointer"}`}
+                              >
+                                <div className="flex items-center justify-center gap-1.5 leading-none">
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSelected
+                                      ? "bg-white ring-1 ring-white/50"
+                                      : TABLE_DOT_STYLE[status]
+                                      }`}
+                                  />
+                                  <span className="font-black text-xs leading-none">
+                                    {table.code}
+                                  </span>
+                                </div>
 
-                              <div className="flex flex-col items-center leading-tight">
-                                <span>{table.code}</span>
-
-                                <span className="mt-1 text-[10px] font-black">
+                                <span className="text-[10px] opacity-80 mt-1 leading-none">
                                   {status === "available"
                                     ? `${table.capacity} người`
                                     : TABLE_STATUS_TEXT[status] || status}
                                 </span>
 
                                 {isSelected && (
-                                  <span className="mt-1 text-[10px] font-black text-white">
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider mt-0.5 bg-white/25 px-1 py-0.2 rounded leading-none">
                                     Đang chọn
                                   </span>
                                 )}
 
-                                {insufficientCapacity &&
-                                  !disabled && (
-                                    <span className="mt-1 text-[10px] font-black text-red-600">
-                                      Thiếu chỗ
-                                    </span>
-                                  )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                    </div>
+                                {insufficientCapacity && !disabled && !isSelected && (
+                                  <span className="text-[8.5px] font-bold text-amber-600/90 mt-0.5 leading-none">
+                                    Thiếu chỗ
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()
                   ) : (
-                    <div className="py-10 text-center text-gray-400 font-bold">
-                      Vui lòng chọn khu vực để hiển thị bàn
+                    <div className="py-8 text-center text-slate-400 font-medium text-xs flex flex-col items-center justify-center gap-1.5">
+                      <MapPin size={20} className="text-slate-300" />
+                      <span>Vui lòng chọn <strong>Khu vực</strong> ở cột bên trái</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="px-6 py-5 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={() => setIsAddingBooking(false)}
-                className="h-11 px-5 rounded-xl bg-gray-100 text-gray-600 font-black hover:bg-gray-200"
-              >
-                Đóng
-              </button>
+            {/* Modal Footer */}
+            <div className="px-3.5 py-2.5 sm:px-6 sm:py-3 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/90 shrink-0">
+              <div className="text-xs font-semibold text-slate-600 truncate">
+                {addForm.selectedTable ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-xs">
+                    <Check size={12} /> Đã chọn: <strong className="underline">{addForm.selectedTable}</strong>
+                  </span>
+                ) : (
+                  <span className="text-slate-400 text-xs">Chưa chọn bàn (Tùy chọn)</span>
+                )}
+              </div>
 
-              <button
-                onClick={saveAddBooking}
-                className="h-11 px-5 rounded-xl bg-primary text-white font-black hover:bg-primary-dark"
-              >
-                Tạo đặt bàn
-              </button>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingBooking(false)}
+                  className="h-8.5 sm:h-9 px-3 sm:px-4 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Đóng
+                </button>
+
+                <button
+                  type="button"
+                  onClick={saveAddBooking}
+                  className="h-8.5 sm:h-9 px-3.5 sm:px-5 rounded-xl bg-[#145c30] hover:bg-[#166534] text-white text-xs font-black shadow-sm transition"
+                >
+                  Tạo đặt bàn
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -89,10 +89,53 @@ export default function DealDetailPanel({
                 </span>
                 <div className="space-y-1">
                   {deal.conditionItems.map((item) => (
-                    <p key={item} className="text-gray-800 font-bold">
+                    <p key={item} title={item} className="text-gray-800 font-bold break-words">
                       • {item}
                     </p>
                   ))}
+                </div>
+              </div>
+            )}
+
+          {deal.serviceConditionItems &&
+            Object.values(deal.serviceConditionItems).some(
+              (arr) => Array.isArray(arr) && arr.length > 0
+            ) && (
+              <div className="grid grid-cols-[110px_1fr] gap-3 text-sm">
+                <span className="text-gray-500 font-semibold">
+                  Đ/k theo hình thức
+                </span>
+                <div className="space-y-2">
+                  {deal.serviceConditionItems.dinein?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-emerald-800">Ăn tại quán:</p>
+                      <ul className="list-disc list-inside text-xs text-slate-700 font-medium pl-1">
+                        {deal.serviceConditionItems.dinein.map((item) => (
+                          <li key={item} title={item} className="break-words">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {deal.serviceConditionItems.delivery?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-emerald-800">Giao tận nơi:</p>
+                      <ul className="list-disc list-inside text-xs text-slate-700 font-medium pl-1">
+                        {deal.serviceConditionItems.delivery.map((item) => (
+                          <li key={item} title={item} className="break-words">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {deal.serviceConditionItems.pickup?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-emerald-800">Đến lấy tại quán:</p>
+                      <ul className="list-disc list-inside text-xs text-slate-700 font-medium pl-1">
+                        {deal.serviceConditionItems.pickup.map((item) => (
+                          <li key={item} title={item} className="break-words">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

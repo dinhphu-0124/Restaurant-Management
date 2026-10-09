@@ -1,81 +1,127 @@
-import { Plus } from "lucide-react";
+import React from "react";
+import { Plus, Sparkles, Flame, Crown, Heart, Clock, Zap, Award } from "lucide-react";
 import RatingStars from "./RatingStars";
+import AppBadge from "./ui/AppBadge";
+
+function getBadgeIcon(badge) {
+  const b = String(badge || "").toLowerCase();
+  if (b.includes("đặc sản")) return Sparkles;
+  if (b.includes("bán chạy")) return Flame;
+  if (b.includes("mới")) return Zap;
+  if (b.includes("đặc sắc")) return Crown;
+  if (b.includes("tâm huyết")) return Heart;
+  if (b.includes("sắp hết")) return Clock;
+  return Award;
+}
 
 function DishCard({ dish, onOpenDetail, onAddToCart }) {
   const hasReviews = Number(dish.reviews || 0) > 0;
+  const isPaused = dish.status === "paused";
+  const isLow = dish.status === "low";
+  const BadgeIcon = dish.badge ? getBadgeIcon(dish.badge) : null;
 
   return (
     <div
-      onClick={() => onOpenDetail(dish)}
-      className={`dish-card relative w-full min-w-0 bg-white rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out border border-gray-100 overflow-hidden grid grid-cols-[110px_minmax(0,1fr)] md:flex md:flex-col md:min-h-[320px] cursor-pointer ${
-        dish.status === "paused" ? "opacity-75 grayscale-[0.2]" : ""
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenDetail?.(dish)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenDetail?.(dish);
+        }
+      }}
+      className={`group relative w-full min-w-0 bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-md hover:-translate-y-1 transition-all duration-300 ease-out overflow-hidden flex flex-col cursor-pointer focus-visible:outline-2 focus-visible:outline-emerald-800 ${
+        isPaused ? "opacity-75 grayscale-[0.25]" : ""
       }`}
     >
-      {dish.status === "paused" && (
-        <div className="absolute top-2 left-2 md:top-3 md:left-3 z-10 bg-danger text-white text-[9px] md:text-[10px] font-bold px-2 md:px-2.5 py-1 rounded-full shadow-md whitespace-nowrap">
-          <span className="md:hidden">TẠM HẾT</span>
-          <span className="hidden md:inline">TẠM HẾT</span>
-        </div>
-      )}
+      {/* Badges */}
+      <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 pointer-events-none">
+        {isPaused && (
+          <AppBadge variant="danger" size="sm" pill className="shadow-sm font-black text-[10px] sm:text-xs">
+            TẠM HẾT
+          </AppBadge>
+        )}
+        {isLow && (
+          <AppBadge variant="warning" size="sm" pill className="shadow-sm font-black text-[10px] sm:text-xs">
+            SẮP HẾT
+          </AppBadge>
+        )}
+        {dish.badge && String(dish.badge).trim() !== "" && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-sm tracking-wide">
+            {BadgeIcon && <BadgeIcon size={10} className="text-amber-200" />}
+            <span>{dish.badge}</span>
+          </span>
+        )}
+      </div>
 
-      {dish.status === "low" && (
-        <div className="absolute top-2 left-2 md:top-3 md:left-3 z-10 bg-warning text-white text-[9px] md:text-[10px] font-bold px-2 md:px-2.5 py-1 rounded-full shadow-md whitespace-nowrap">
-          SẮP HẾT
-        </div>
-      )}
-
-      <div className="w-full h-28 md:h-36 overflow-hidden md:shrink-0 bg-gray-50">
+      {/* Dish Thumbnail (Ở trên cùng) */}
+      <div className="w-full aspect-[4/3] overflow-hidden bg-slate-100 relative shrink-0">
         <img
-          src={dish.image}
+          src={dish.image || "/images/placeholder.jpg"}
           alt={dish.name}
-          className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 ease-in-out"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = "/images/placeholder.jpg";
+          }}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
         />
       </div>
 
-      <div className="p-3 md:p-4 min-w-0 flex flex-col md:flex-1">
-        <h3 className="font-bold text-gray-900 text-sm md:text-base line-clamp-1 group-hover:text-primary transition-colors">
-          {dish.name}
-        </h3>
+      {/* Content (Thông tin hiển thị ở dưới ảnh) */}
+      <div className="p-2.5 sm:p-3.5 min-w-0 flex flex-col flex-1 justify-between gap-1.5">
+        <div>
+          <h3 className="font-bold text-slate-900 text-xs sm:text-sm md:text-base leading-snug line-clamp-1 group-hover:text-emerald-700 transition-colors">
+            {dish.name}
+          </h3>
 
-        <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2 overflow-hidden break-words">
-          {dish.shortDescription ||
-            dish.description ||
-            "Món ăn đặc trưng của nhà hàng"}
-        </p>
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 leading-relaxed line-clamp-2 overflow-hidden break-words">
+            {dish.shortDescription ||
+              dish.description ||
+              "Món ăn đặc trưng của nhà hàng"}
+          </p>
 
-        {/* Đánh giá */}
-        <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-          <RatingStars rating={dish.rating} size={11} />
-
-          {hasReviews ? (
-            <span className="text-[10px] md:text-[11px] font-medium text-gray-500">
-              {Number(dish.rating || 0).toFixed(1)} • {dish.reviews} lượt
-            </span>
-          ) : (
-            <span className="text-[10px] md:text-[11px] font-medium text-gray-400">
-              Chưa có
-            </span>
-          )}
+          {/* Rating */}
+          <div className="mt-1 sm:mt-1.5 flex items-center gap-1 flex-wrap">
+            <RatingStars rating={dish.rating} size={11} />
+            {hasReviews ? (
+              <span className="text-[10px] sm:text-[11px] font-medium text-slate-500">
+                {Number(dish.rating || 0).toFixed(1)}
+              </span>
+            ) : (
+              <span className="text-[10px] sm:text-[11px] font-medium text-slate-400">
+                Chưa có
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-50 mt-2">
-          <p className="font-bold text-secondary text-sm md:text-base">
+        {/* Footer: Price & CTA */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-1 sm:mt-2">
+          <p className="font-extrabold text-amber-700 text-xs sm:text-sm md:text-base tracking-tight truncate pr-1">
             {dish.price}
           </p>
 
           <button
+            type="button"
+            aria-label={`Thêm ${dish.name} vào giỏ hàng`}
             onClick={(e) => {
               e.stopPropagation();
-              onAddToCart(dish, 1, e);
+              if (dish.hasMultiplePrices || (dish.priceOptions && dish.priceOptions.length > 1)) {
+                onOpenDetail?.(dish);
+              } else {
+                onAddToCart?.(dish, 1, e);
+              }
             }}
-            disabled={dish.status === "paused"}
-            className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all shadow-sm ${
-              dish.status === "paused"
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-primary text-white hover:bg-primary-light hover:shadow-md hover:scale-105 active:scale-95"
+            disabled={isPaused}
+            className={`w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-lg sm:rounded-xl flex items-center justify-center transition-all duration-200 shadow-sm shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${
+              isPaused
+                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                : "bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-md hover:shadow-emerald-600/20 active:scale-90"
             }`}
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
           </button>
         </div>
       </div>

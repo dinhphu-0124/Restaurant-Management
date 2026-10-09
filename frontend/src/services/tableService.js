@@ -30,12 +30,20 @@ async function handleResponse(res) {
 const normalizeArea = (area) => ({
   ...area,
   id: String(area.id),
+  spaceId: String(area.spaceId || area.id),
+  areaId: String(area.areaId || area.id),
+  name: area.label || area.name || area.title,
+  title: area.label || area.name || area.title,
+  label: area.label || area.name || area.title,
 });
 
 const normalizeTable = (table) => ({
   ...table,
   id: String(table.id),
-  areaId: String(table.areaId),
+  spaceId: String(table.spaceId || table.areaId),
+  areaId: String(table.spaceId || table.areaId),
+  areaName: table.areaName || table.spaceName || "",
+  spaceName: table.spaceName || table.areaName || "",
   code: String(table.code || table.tableCode),
   tableCode: String(table.tableCode || table.code),
   capacity: Number(table.capacity || table.seats || 4),

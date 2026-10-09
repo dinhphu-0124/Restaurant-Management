@@ -18,12 +18,19 @@ import {
 } from "lucide-react";
 
 import { spaceService } from "../../services/spaceService";
+import { tableService } from "../../services/tableService";
 import { showAdminToast } from "../../components/admin/AdminToast";
-import { removeVietnameseTones } from "../../utils/string";
+import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
+import { getCurrentUser } from "../../utils/auth";
+import { canUseAction } from "../../utils/permissions";
+import { socket } from "../../utils/socket";
+import AdminSpaceModals from "../../components/admin/AdminSpaceModals";
 
 function AdminSpacesPage() {
-  const { globalSearch } = useOutletContext();
+  const { globalSearch, setHeaderAction } = useOutletContext();
+  const currentUser = getCurrentUser();
   const [spaces, setSpaces] = useState([]);
+  const [activeTab, setActiveTab] = useState("spaces"); // "spaces" or "areas"
   const [loading, setLoading] = useState(true);
   const [selectedSpace, setSelectedSpace] = useState(null);
   const [errors, setErrors] = useState({
@@ -41,8 +48,18 @@ function AdminSpacesPage() {
     images: []
   });
 
+  // --- Area States ---
+  const [areas, setAreas] = useState([]);
+  const [isAddingArea, setIsAddingArea] = useState(false);
+  const [areaForm, setAreaForm] = useState({ name: "", description: "" });
+  const [editingArea, setEditingArea] = useState(null);
+  const [areaEditForm, setAreaEditForm] = useState({ name: "", description: "" });
+  const [deleteConfirmArea, setDeleteConfirmArea] = useState(null);
+
   const [previewUrl, setPreviewUrl] = useState(null);
   const [deleteConfirmSpace, setDeleteConfirmSpace] = useState(null);
+  const [isUrlInputOpen, setIsUrlInputOpen] = useState(false);
+  const [inputImageUrl, setInputImageUrl] = useState("");
 
   // Helper to map DB image url to absolute backend url
   const getImgUrl = (img) => {
@@ -71,9 +88,73 @@ function AdminSpacesPage() {
     }
   };
 
+  const fetchAreas = async () => {
+    try {
+      const data = await tableService.getAreas();
+      setAreas(data);
+    } catch (error) {
+      console.error("Lỗi lấy danh sách khu vực:", error);
+    }
+  };
+
   useEffect(() => {
     fetchSpaces();
+    fetchAreas();
   }, []);
+
+  const openAddArea = () => {
+    setAreaForm({ name: "", description: "" });
+    setIsAddingArea(true);
+  };
+
+  const saveAddArea = async () => {
+    if (!areaForm.name.trim()) { showAdminToast({ title: "Thiếu thông tin", message: "Vui lòng nhập tên khu vực.", type: "warning" }); return; }
+    try {
+      const savedArea = await tableService.createArea({
+        name: areaForm.name.trim(),
+        description: areaForm.description.trim()
+      });
+      setAreas((prev) => [...prev, savedArea]);
+      setIsAddingArea(false);
+      showAdminToast({ title: "Thêm khu vực thành công", message: `Đã thêm khu vực ${savedArea.name}.` });
+    } catch (error) {
+      console.error(error);
+      showAdminToast({ title: "Lỗi", message: error.message || "Không thể thêm khu vực.", type: "error" });
+    }
+  };
+
+  const openEditArea = (area) => {
+    setEditingArea(area);
+    setAreaEditForm({ name: area.name, description: area.description || "" });
+  };
+
+  const saveEditArea = async () => {
+    if (!editingArea || !areaEditForm.name.trim()) { showAdminToast({ title: "Thiếu thông tin", message: "Vui lòng nhập tên khu vực.", type: "warning" }); return; }
+    try {
+      const updatedArea = await tableService.updateArea(editingArea.id, {
+        name: areaEditForm.name.trim(),
+        description: areaEditForm.description.trim()
+      });
+      setAreas((prev) => prev.map((a) => String(a.id) === String(editingArea.id) ? updatedArea : a));
+      setEditingArea(null);
+      showAdminToast({ title: "Cập nhật khu vực thành công", message: `Đã cập nhật khu vực ${updatedArea.name}.` });
+    } catch (error) {
+      console.error(error);
+      showAdminToast({ title: "Lỗi", message: error.message || "Không thể cập nhật khu vực.", type: "error" });
+    }
+  };
+
+  const handleDeleteArea = async (id, name) => {
+    try {
+      await tableService.deleteArea(id);
+      setAreas((prev) => prev.filter((a) => String(a.id) !== String(id)));
+      setDeleteConfirmArea(null);
+      showAdminToast({ title: "Xóa khu vực thành công", message: `Đã xóa khu vực ${name}.` });
+    } catch (error) {
+      console.error(error);
+      showAdminToast({ title: "Lỗi", message: error.message || "Không thể xóa khu vực.", type: "error" });
+    }
+  };
 
   // Open Edit form for a specific space
   const handleEditSpace = (space) => {
@@ -105,7 +186,7 @@ function AdminSpacesPage() {
       };
       await spaceService.updateSpace(space.key, updatedSpace);
       await fetchSpaces();
-      
+
       // Auto select it for editing
       const latestSpaces = await spaceService.getAdminSpaces();
       const updated = latestSpaces.find((s) => s.key === space.key);
@@ -155,28 +236,38 @@ function AdminSpacesPage() {
     });
   };
 
-  // Handle listen events from AdminLayout header buttons
+  // Set header action dynamically based on activeTab
   useEffect(() => {
-    const handleOpenAddModalEvent = () => {
-      handleCreateNewSpace();
-    };
+    if (canUseAction(currentUser, "tables:create")) {
+      setHeaderAction({
+        label: activeTab === "spaces" ? "Thêm không gian" : "Thêm khu vực",
+        onClick: () => {
+          if (activeTab === "spaces") {
+            handleCreateNewSpace();
+          } else {
+            openAddArea();
+          }
+        },
+      });
+    }
+    return () => setHeaderAction(null);
+  }, [setHeaderAction, activeTab, spaces, currentUser?.role]);
 
-    window.addEventListener("openAddSpaceModal", handleOpenAddModalEvent);
-    return () => {
-      window.removeEventListener("openAddSpaceModal", handleOpenAddModalEvent);
-    };
-  }, [spaces]);
-
-  // Auto re-fetch when areas/spaces change from other pages (e.g. AdminTablesPage)
+  // Auto re-fetch when areas/spaces change from other pages (e.g. AdminTablesPage) or via realtime sockets
   useEffect(() => {
-    const handleAreasUpdated = () => fetchSpaces();
+    const handleAreasUpdated = () => fetchAreas();
     const handleSpacesUpdated = () => fetchSpaces();
 
     window.addEventListener("areasUpdated", handleAreasUpdated);
     window.addEventListener("spacesUpdated", handleSpacesUpdated);
+    socket.on("spaces_updated", handleSpacesUpdated);
+    socket.on("areas_updated", handleAreasUpdated);
+
     return () => {
       window.removeEventListener("areasUpdated", handleAreasUpdated);
       window.removeEventListener("spacesUpdated", handleSpacesUpdated);
+      socket.off("spaces_updated", handleSpacesUpdated);
+      socket.off("areas_updated", handleAreasUpdated);
     };
   }, []);
 
@@ -211,13 +302,19 @@ function AdminSpacesPage() {
   };
 
   // Direct paste image URL
-  const handleAddUrlImage = () => {
-    const url = prompt("Dán đường dẫn URL ảnh vào đây:");
-    if (!url || !url.trim()) return;
+  const handleConfirmAddUrlImage = () => {
+    if (!inputImageUrl || !inputImageUrl.trim()) {
+      showAdminToast({
+        title: "URL trống",
+        message: "Vui lòng nhập đường dẫn URL ảnh hợp lệ.",
+        type: "warning",
+      });
+      return;
+    }
 
     const newImg = {
       id: "img_" + Math.random().toString(36).substring(2, 9),
-      url: url.trim(),
+      url: inputImageUrl.trim(),
       title: "Ảnh dán URL",
       description: "Mô tả ảnh",
       isCover: formState.images.length === 0
@@ -227,6 +324,12 @@ function AdminSpacesPage() {
       ...prev,
       images: [...prev.images, newImg]
     }));
+    setInputImageUrl("");
+    setIsUrlInputOpen(false);
+    showAdminToast({
+      title: "Thành công",
+      message: "Đã thêm ảnh từ URL.",
+    });
   };
 
   // Delete image in current form state
@@ -351,41 +454,70 @@ function AdminSpacesPage() {
   // Filter based on globalSearch keyword
   const searchKeyword = String(globalSearch || "").trim();
 
-  const filteredActiveSpaces = activeSpaces.filter((space) => {
-    if (!searchKeyword) return true;
-    const cleanLabel = removeVietnameseTones(space.label);
-    const cleanDesc = removeVietnameseTones(space.description);
-    const cleanDetail = removeVietnameseTones(space.detailDescription);
-    const cleanKeyword = removeVietnameseTones(searchKeyword);
-    return (
-      cleanLabel.includes(cleanKeyword) ||
-      cleanDesc.includes(cleanKeyword) ||
-      cleanDetail.includes(cleanKeyword) ||
-      String(space.capacity || "").includes(cleanKeyword)
-    );
-  });
+  const filteredActiveSpaces = useMemo(() => {
+    if (!searchKeyword) return activeSpaces;
+    return activeSpaces
+      .map((space) => {
+        const score = calculateSearchScore({
+          label: space.label || space.name,
+          name: space.label || space.name,
+          description: `${space.description || ""} ${space.detailDescription || ""} ${space.capacity || ""}`
+        }, searchKeyword);
+        return { space, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.space);
+  }, [activeSpaces, searchKeyword]);
 
-  const filteredPendingSpaces = pendingSpaces.filter((space) => {
-    if (!searchKeyword) return true;
-    const cleanLabel = removeVietnameseTones(space.label);
-    const cleanDesc = removeVietnameseTones(space.description);
-    const cleanKeyword = removeVietnameseTones(searchKeyword);
-    return (
-      cleanLabel.includes(cleanKeyword) ||
-      cleanDesc.includes(cleanKeyword)
-    );
-  });
+  const filteredPendingSpaces = useMemo(() => {
+    if (!searchKeyword) return pendingSpaces;
+    return pendingSpaces
+      .map((space) => {
+        const score = calculateSearchScore({
+          label: space.label || space.name,
+          name: space.label || space.name,
+          description: space.description || ""
+        }, searchKeyword);
+        return { space, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.space);
+  }, [pendingSpaces, searchKeyword]);
 
   return (
     <div className="space-y-6">
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab("spaces")}
+          className={`px-6 py-3 text-sm font-black border-b-2 transition ${activeTab === "spaces"
+            ? "border-green-800 text-green-800"
+            : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+        >
+          Không gian
+        </button>
+        <button
+          onClick={() => setActiveTab("areas")}
+          className={`px-6 py-3 text-sm font-black border-b-2 transition ${activeTab === "areas"
+            ? "border-green-800 text-green-800"
+            : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+        >
+          Khu vực
+        </button>
+      </div>
+
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-2">
           <RefreshCw className="animate-spin text-primary" size={24} />
-          <p className="text-xs font-bold">Đang tải dữ liệu không gian...</p>
+          <p className="text-xs font-bold">Đang tải dữ liệu...</p>
         </div>
-      ) : (
+      ) : activeTab === "spaces" ? (
         <div className={`grid grid-cols-1 ${selectedSpace ? "lg:grid-cols-[1.15fr_0.85fr]" : "lg:grid-cols-1"} gap-5 items-stretch`}>
-          
+
           {/* LEFT COLUMN: Current & Pending list */}
           <div className="space-y-6 flex flex-col h-full min-w-0">
             {/* Box 1: Danh sách không gian hiện tại */}
@@ -399,7 +531,86 @@ function AdminSpacesPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto relative w-full">
+              {/* MOBILE CARDS (< md) */}
+              <div className="block md:hidden divide-y divide-gray-100">
+                {filteredActiveSpaces.map((space, index) => {
+                  const coverImg = space.images?.find((img) => img.isCover)?.url || space.images?.[0]?.url || "";
+                  const isSelected = selectedSpace?.key === space.key;
+
+                  return (
+                    <div
+                      key={space.key}
+                      onClick={() => handleEditSpace(space)}
+                      className={`p-4 space-y-3 cursor-pointer transition ${isSelected ? "bg-green-50/40" : "hover:bg-slate-50"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-16 h-14 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0">
+                          {coverImg ? (
+                            <img src={getImgUrl(coverImg)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                              <ImageIcon size={18} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-black text-slate-900 text-sm truncate">{space.label || "(Không gian mới)"}</p>
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${space.status === "active"
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : "bg-gray-100 text-gray-500 border border-gray-200"
+                                }`}
+                            >
+                              {space.status === "active" ? "Hiển thị" : "Ẩn"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
+                            {space.description || "Chưa có mô tả"}
+                          </p>
+                          <div className="flex items-center gap-3 text-[11px] text-gray-400 font-semibold mt-1">
+                            <span>{space.images?.length || 0} ảnh</span>
+                            <span>•</span>
+                            <span>Thứ tự: {space.order}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-50">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSpace(space);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 flex items-center gap-1.5 transition"
+                        >
+                          <Pencil size={13} /> Sửa
+                        </button>
+                        {canUseAction(currentUser, "tables:delete") && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmSpace(space);
+                            }}
+                            className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                            title="Xóa không gian"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredActiveSpaces.length === 0 && (
+                  <div className="p-8 text-center text-xs font-bold text-gray-400">Không có không gian nào</div>
+                )}
+              </div>
+
+              {/* DESKTOP TABLE (>= md) */}
+              <div className="hidden md:block overflow-x-auto relative w-full">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
                     <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-bold whitespace-nowrap">
@@ -420,9 +631,8 @@ function AdminSpacesPage() {
                         <tr
                           key={space.key}
                           onClick={() => handleEditSpace(space)}
-                          className={`hover:bg-green-50/20 transition cursor-pointer whitespace-nowrap ${
-                            isSelected ? "bg-green-50/40" : ""
-                          }`}
+                          className={`hover:bg-green-50/20 transition cursor-pointer whitespace-nowrap ${isSelected ? "bg-green-50/40" : ""
+                            }`}
                         >
                           <td className="p-3.5 text-center font-bold text-gray-400">{index + 1}</td>
                           <td className="p-3.5">
@@ -446,11 +656,10 @@ function AdminSpacesPage() {
                           </td>
                           <td className="p-3.5 text-center">
                             <span
-                              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black ${
-                                space.status === "active"
-                                  ? "bg-green-50 text-green-700 border border-green-200"
-                                  : "bg-gray-100 text-gray-500 border border-gray-200"
-                              }`}
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-black ${space.status === "active"
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : "bg-gray-100 text-gray-500 border border-gray-200"
+                                }`}
                             >
                               {space.status === "active" ? "Đang hiển thị" : "Đang ẩn"}
                             </span>
@@ -466,16 +675,26 @@ function AdminSpacesPage() {
                                   e.stopPropagation();
                                   handleEditSpace(space);
                                 }}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
-                                  isSelected
-                                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                }`}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${isSelected
+                                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  }`}
                                 title="Chỉnh sửa không gian"
                               >
                                 <Pencil size={14} />
                               </button>
-                              {/* Bị khóa xóa từ AdminSpacesPage */}
+                              {canUseAction(currentUser, "tables:delete") && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteConfirmSpace(space);
+                                  }}
+                                  className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition"
+                                  title="Xóa không gian"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -507,78 +726,159 @@ function AdminSpacesPage() {
                   Không còn không gian chờ kích hoạt nào.
                 </div>
               ) : (
-                 <div className="overflow-x-auto relative w-full">
-                  <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                    <thead>
-                      <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-bold whitespace-nowrap">
-                        <th className="p-3.5 text-center w-12">STT</th>
-                        <th className="p-3.5">Tên không gian</th>
-                        <th className="p-3.5">Mô tả chờ</th>
-                        <th className="p-3.5 text-right sticky right-0 bg-gray-50/95 backdrop-blur-sm z-20 shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.05)] w-24">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                       {filteredPendingSpaces.map((space, index) => {
-                        const coverImg = space.images?.[0]?.url || "";
-                        const isSelected = selectedSpace?.key === space.key;
+                <>
+                  {/* MOBILE CARDS (< md) */}
+                  <div className="block md:hidden divide-y divide-gray-100">
+                    {filteredPendingSpaces.map((space, index) => {
+                      const coverImg = space.images?.[0]?.url || "";
+                      const isSelected = selectedSpace?.key === space.key;
 
-                        return (
-                          <tr
-                            key={space.key}
-                            onClick={() => handleEditSpace(space)}
-                            className={`hover:bg-amber-50/10 transition cursor-pointer whitespace-nowrap ${
-                              isSelected ? "bg-amber-50/20" : ""
-                            }`}
-                          >
-                            <td className="p-3.5 text-center font-bold text-gray-400">{index + 1}</td>
-                            <td className="p-3.5">
-                              <div className="flex items-center gap-3">
-                                <div className="w-14 h-11 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 shrink-0">
-                                  {coverImg ? (
-                                    <img src={getImgUrl(coverImg)} alt="" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                      <ImageIcon size={16} />
-                                    </div>
-                                  )}
+                      return (
+                        <div
+                          key={space.key}
+                          onClick={() => handleEditSpace(space)}
+                          className={`p-4 space-y-3 cursor-pointer transition ${isSelected ? "bg-amber-50/20" : "hover:bg-slate-50"}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-16 h-14 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0">
+                              {coverImg ? (
+                                <img src={getImgUrl(coverImg)} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                  <ImageIcon size={18} />
                                 </div>
-                                <span className="font-black text-gray-900">{space.label || "(Không gian mới)"}</span>
-                              </div>
-                            </td>
-                            <td className="p-3.5 text-gray-500">{space.description}</td>
-                            <td className={`p-3.5 text-right sticky right-0 z-10 transition shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.08)] ${isSelected ? "bg-amber-50/20" : "bg-white"}`}>
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditSpace(space);
-                                  }}
-                                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${
-                                    isSelected
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-black text-slate-900 text-sm truncate">{space.label || "(Không gian mới)"}</p>
+                              <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{space.description || "Chưa có mô tả"}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-50">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditSpace(space);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 flex items-center gap-1.5 transition"
+                            >
+                              <Pencil size={13} /> Sửa
+                            </button>
+                            {canUseAction(currentUser, "tables:delete") && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteConfirmSpace(space);
+                                }}
+                                className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                                title="Xóa không gian chờ"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddToActive(space);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-green-800 text-white text-xs font-black hover:bg-green-950 transition shadow-sm"
+                            >
+                              Thêm
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* DESKTOP TABLE (>= md) */}
+                  <div className="hidden md:block overflow-x-auto relative w-full">
+                    <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                      <thead>
+                        <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-bold whitespace-nowrap">
+                          <th className="p-3.5 text-center w-12">STT</th>
+                          <th className="p-3.5">Tên không gian</th>
+                          <th className="p-3.5">Mô tả chờ</th>
+                          <th className="p-3.5 text-right sticky right-0 bg-gray-50/95 backdrop-blur-sm z-20 shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.05)] w-24">Hành động</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filteredPendingSpaces.map((space, index) => {
+                          const coverImg = space.images?.[0]?.url || "";
+                          const isSelected = selectedSpace?.key === space.key;
+
+                          return (
+                            <tr
+                              key={space.key}
+                              onClick={() => handleEditSpace(space)}
+                              className={`hover:bg-amber-50/10 transition cursor-pointer whitespace-nowrap ${isSelected ? "bg-amber-50/20" : ""
+                                }`}
+                            >
+                              <td className="p-3.5 text-center font-bold text-gray-400">{index + 1}</td>
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-14 h-11 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 shrink-0">
+                                    {coverImg ? (
+                                      <img src={getImgUrl(coverImg)} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                        <ImageIcon size={16} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className="font-black text-gray-900">{space.label || "(Không gian mới)"}</span>
+                                </div>
+                              </td>
+                              <td className="p-3.5 text-gray-500">{space.description}</td>
+                              <td className={`p-3.5 text-right sticky right-0 z-10 transition shadow-[-8px_0_8px_-6px_rgba(0,0,0,0.08)] ${isSelected ? "bg-amber-50/20" : "bg-white"}`}>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditSpace(space);
+                                    }}
+                                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${isSelected
                                       ? "bg-emerald-600 text-white hover:bg-emerald-700"
                                       : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                  }`}
-                                  title="Chỉnh sửa không gian chờ"
-                                >
-                                  <Pencil size={14} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddToActive(space);
-                                  }}
-                                  className="px-3 py-2 rounded-xl bg-green-800 text-white text-xs font-black hover:bg-green-950 transition shadow-sm"
-                                >
-                                  Thêm vào không gian
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                      }`}
+                                    title="Chỉnh sửa không gian chờ"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  {canUseAction(currentUser, "tables:delete") && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirmSpace(space);
+                                      }}
+                                      className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition"
+                                      title="Xóa không gian chờ"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddToActive(space);
+                                    }}
+                                    className="px-3 py-2 rounded-xl bg-green-800 text-white text-xs font-black hover:bg-green-950 transition shadow-sm"
+                                  >
+                                    Thêm vào không gian
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -629,11 +929,10 @@ function AdminSpacesPage() {
                           if (errors.label) setErrors((prev) => ({ ...prev, label: false }));
                         }}
                         placeholder="VD: Tầng lửng, Phòng tiệc..."
-                        className={`w-full h-10 px-3 rounded-xl border bg-gray-50/50 text-xs font-semibold text-gray-900 focus:bg-white outline-none transition ${
-                          errors.label
-                            ? "border-red-500 bg-red-50/10 focus:border-red-500"
-                            : "border-gray-200 focus:border-green-800"
-                        }`}
+                        className={`w-full h-10 px-3 rounded-xl border bg-gray-50/50 text-xs font-semibold text-gray-900 focus:bg-white outline-none transition ${errors.label
+                          ? "border-red-500 bg-red-50/10 focus:border-red-500"
+                          : "border-gray-200 focus:border-green-800"
+                          }`}
                       />
                       {errors.label && (
                         <p className="text-[10px] text-red-500 font-bold mt-1">
@@ -667,11 +966,10 @@ function AdminSpacesPage() {
                         if (errors.description) setErrors((prev) => ({ ...prev, description: false }));
                       }}
                       placeholder="VD: Không gian mở ngoài trời..."
-                      className={`w-full h-10 px-3 rounded-xl border bg-gray-50/50 text-xs font-semibold text-gray-900 focus:bg-white outline-none transition ${
-                        errors.description
-                          ? "border-red-500 bg-red-50/10 focus:border-red-500"
-                          : "border-gray-200 focus:border-green-800"
-                      }`}
+                      className={`w-full h-10 px-3 rounded-xl border bg-gray-50/50 text-xs font-semibold text-gray-900 focus:bg-white outline-none transition ${errors.description
+                        ? "border-red-500 bg-red-50/10 focus:border-red-500"
+                        : "border-gray-200 focus:border-green-800"
+                        }`}
                     />
                     {errors.description && (
                       <p className="text-[10px] text-red-500 font-bold mt-1">
@@ -723,19 +1021,51 @@ function AdminSpacesPage() {
                 </div>
 
                 {/* Section 2: Hình ảnh không gian */}
-                <div className="space-y-4 pt-3 border-t">
+                <div className="space-y-3 pt-3 border-t border-slate-100">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black text-green-900 border-l-4 border-green-800 pl-2 uppercase tracking-wide">
+                    <h4 className="text-xs font-black text-emerald-900 border-l-4 border-emerald-800 pl-2 uppercase tracking-wide">
                       Hình ảnh không gian
                     </h4>
-                    <button
-                      type="button"
-                      onClick={handleAddUrlImage}
-                      className="text-[11px] font-bold text-primary hover:underline"
-                    >
-                      + Dán URL ảnh
-                    </button>
+                    {!isUrlInputOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsUrlInputOpen(true)}
+                        className="text-[11px] font-bold text-emerald-800 hover:text-emerald-900 hover:underline"
+                      >
+                        + Dán URL ảnh
+                      </button>
+                    )}
                   </div>
+
+                  {isUrlInputOpen && (
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl animate-in fade-in duration-150">
+                      <input
+                        type="url"
+                        placeholder="Dán đường dẫn URL ảnh (https://...)..."
+                        value={inputImageUrl}
+                        onChange={(e) => setInputImageUrl(e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmAddUrlImage}
+                        className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition"
+                      >
+                        Thêm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUrlInputOpen(false);
+                          setInputImageUrl("");
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  )}
 
                   {/* Upload Dotted Area */}
                   <div className="relative group border-2 border-dashed border-gray-200 hover:border-green-800 bg-gray-50/50 rounded-2xl p-5 text-center cursor-pointer transition">
@@ -765,7 +1095,7 @@ function AdminSpacesPage() {
                               type="button"
                               onClick={() => setPreviewUrl(getImgUrl(img.url))}
                               className="text-white hover:text-green-400"
-                              title="Xem lớn"
+                              title="Xem phóng to ảnh"
                             >
                               <Eye size={12} />
                             </button>
@@ -773,7 +1103,7 @@ function AdminSpacesPage() {
                               type="button"
                               onClick={() => handleDeleteImage(img.id)}
                               className="text-white hover:text-red-400"
-                              title="Xóa"
+                              title="Xóa ảnh này"
                             >
                               <Trash2 size={12} />
                             </button>
@@ -846,6 +1176,7 @@ function AdminSpacesPage() {
                                 type="button"
                                 onClick={() => handleSetCover(img.id)}
                                 className="text-[9px] font-bold text-gray-400 hover:text-primary hover:underline"
+                                title="Đặt làm ảnh bìa"
                               >
                                 Đặt bìa
                               </button>
@@ -856,6 +1187,7 @@ function AdminSpacesPage() {
                                 disabled={idx === 0}
                                 onClick={() => handleMoveImage(idx, -1)}
                                 className="p-1 rounded-md hover:bg-gray-200 text-gray-400 disabled:opacity-30"
+                                title="Di chuyển ảnh lên trên"
                               >
                                 <ArrowUp size={11} />
                               </button>
@@ -864,6 +1196,7 @@ function AdminSpacesPage() {
                                 disabled={idx === formState.images.length - 1}
                                 onClick={() => handleMoveImage(idx, 1)}
                                 className="p-1 rounded-md hover:bg-gray-200 text-gray-400 disabled:opacity-30"
+                                title="Di chuyển ảnh xuống dưới"
                               >
                                 <ArrowDown size={11} />
                               </button>
@@ -871,6 +1204,7 @@ function AdminSpacesPage() {
                                 type="button"
                                 onClick={() => handleDeleteImage(img.id)}
                                 className="p-1 rounded-md hover:bg-red-50 text-red-500"
+                                title="Xóa ảnh này"
                               >
                                 <Trash2 size={11} />
                               </button>
@@ -901,6 +1235,91 @@ function AdminSpacesPage() {
               </form>
             </div>
           )}
+        </div>
+      ) : (
+        /* Areas Tab Content */
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden p-4 sm:p-5">
+          {/* MOBILE CARDS (< md) */}
+          <div className="block md:hidden divide-y divide-gray-100">
+            {areas.map((area, index) => (
+              <div key={area.id} className="py-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-sm text-gray-900">{area.name}</span>
+                  <div className="flex items-center gap-1.5">
+                    {canUseAction(currentUser, "tables:update") && (
+                      <button
+                        type="button"
+                        onClick={() => openEditArea(area)}
+                        className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                        title="Chỉnh sửa khu vực"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {canUseAction(currentUser, "tables:delete") && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmArea(area)}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                        title="Xóa khu vực"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 font-medium">{area.description || "Chưa có mô tả"}</p>
+              </div>
+            ))}
+            {areas.length === 0 && (
+              <div className="py-8 text-center text-xs font-bold text-gray-400">Chưa có khu vực nào</div>
+            )}
+          </div>
+
+          {/* DESKTOP TABLE (>= md) */}
+          <div className="hidden md:block overflow-x-auto relative w-full">
+            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-bold whitespace-nowrap">
+                  <th className="p-3.5 text-center w-12">STT</th>
+                  <th className="p-3.5">Tên khu vực</th>
+                  <th className="p-3.5">Mô tả</th>
+                  <th className="p-3.5 text-right w-24">Hành động</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {areas.map((area, index) => (
+                  <tr key={area.id} className="hover:bg-green-50/20 transition whitespace-nowrap">
+                    <td className="p-3.5 text-center font-bold text-gray-400">{index + 1}</td>
+                    <td className="p-3.5 font-black text-gray-900">{area.name}</td>
+                    <td className="p-3.5 text-gray-500 font-semibold">{area.description || "Chưa có mô tả"}</td>
+                    <td className="p-3.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {canUseAction(currentUser, "tables:update") && (
+                          <button
+                            onClick={() => openEditArea(area)}
+                            className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 flex items-center justify-center transition"
+                            title="Chỉnh sửa khu vực"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canUseAction(currentUser, "tables:delete") && (
+                          <button
+                            onClick={() => setDeleteConfirmArea(area)}
+                            className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition"
+                            title="Xóa khu vực"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -977,6 +1396,18 @@ function AdminSpacesPage() {
           </div>
         </div>
       )}
+      {/* Area Modals */}
+      <AdminSpaceModals
+        isAddingArea={isAddingArea} setIsAddingArea={setIsAddingArea}
+        areaForm={areaForm} setAreaForm={setAreaForm} saveAddArea={saveAddArea}
+        isAddingTable={false} setIsAddingTable={() => { }}
+        tableForm={{}} setTableForm={() => { }} areas={areas} saveAddTable={() => { }}
+        editingArea={editingArea} setEditingArea={setEditingArea}
+        areaEditForm={areaEditForm} setAreaEditForm={setAreaEditForm} saveEditArea={saveEditArea}
+        deleteConfirmArea={deleteConfirmArea} setDeleteConfirmArea={setDeleteConfirmArea} handleDeleteArea={handleDeleteArea}
+        editingTable={null} setEditingTable={() => { }}
+        tableEditForm={{}} setTableEditForm={() => { }} saveEditTable={() => { }}
+      />
     </div>
   );
 }

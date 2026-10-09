@@ -1,6 +1,7 @@
 const db = require("../config/db");
 const { getIO } = require("../config/socket");
 const { createActivityLog } = require("../utils/activityLog");
+const { sendTablePinEmail } = require("../utils/mail");
 
 const TABLE_STATUSES = ["available", "reserved", "serving", "cleaning"];
 
@@ -43,18 +44,19 @@ function getAreaCodeConfig(areaName = "") {
   return { type: "text", prefix };
 }
 
-async function generateTableCodeByArea(areaId) {
-  const [areaRows] = await db.query(
-    `SELECT id, name FROM areas WHERE id = ? AND deleted_at IS NULL AND status = 'active' LIMIT 1`,
-    [areaId],
+async function generateTableCodeByArea(spaceIdOrAreaId) {
+  const [spaceRows] = await db.query(
+    `SELECT id, label AS name FROM restaurant_spaces WHERE id = ? AND status = 'active' LIMIT 1`,
+    [spaceIdOrAreaId],
   );
-  if (areaRows.length === 0) {
-    const error = new Error("Khu vực không tồn tại.");
+  if (spaceRows.length === 0) {
+    const error = new Error("Không gian / Khu vực không tồn tại hoặc đang tạm ẩn.");
     error.statusCode = 400;
     throw error;
   }
-  const area = areaRows[0];
-  const config = getAreaCodeConfig(area.name);
+  const spaceName = spaceRows[0].name;
+
+  const config = getAreaCodeConfig(spaceName);
   const safePrefix = escapeRegExp(config.prefix);
 
   const [tableRows] = await db.query(
@@ -81,23 +83,38 @@ async function generateTableCodeByArea(areaId) {
 
 const mapArea = (row) => ({
   id: row.id,
-  name: row.name,
-  description: row.description,
+  spaceId: row.id,
+  areaId: row.id,
+  name: row.label || row.name,
+  title: row.label || row.name,
+  label: row.label || row.name,
+  description: row.description || "",
   status: row.status,
+  capacity: Number(row.capacity || row.total_seats || 0),
+  seats: Number(row.total_seats || row.capacity || 0),
+  tableCount: Number(row.table_count || 0),
+  image: row.cover_image || row.image_url || "",
+  imageUrl: row.cover_image || row.image_url || "",
+  spaceKey: row.space_key || "",
+  displayOrder: row.display_order || 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
 
 const mapTable = (row) => ({
   id: row.id,
-  areaId: row.area_id,
-  areaName: row.area_name,
+  spaceId: row.space_id || row.area_id,
+  areaId: row.space_id || row.area_id,
+  areaName: row.space_label || row.area_name || "",
+  spaceName: row.space_label || row.area_name || "",
+  spaceKey: row.space_key || "",
   code: row.table_code,
   tableCode: row.table_code,
   capacity: row.seats,
   seats: row.seats,
   status: row.status,
   description: row.description,
+  pinCode: row.pin_code || null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -105,150 +122,219 @@ const mapTable = (row) => ({
 exports.getAreas = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT * FROM areas WHERE deleted_at IS NULL AND status = 'active' ORDER BY id ASC`,
+      `SELECT 
+         s.id, 
+         s.space_key,
+         s.label AS name,
+         s.label, 
+         s.description, 
+         s.capacity,
+         s.display_order,
+         s.status, 
+         s.created_at, 
+         s.updated_at,
+         COUNT(t.id) AS table_count,
+         COALESCE(SUM(t.seats), 0) AS total_seats,
+         (
+           SELECT si.url 
+           FROM space_images si 
+           WHERE si.space_id = s.id 
+           ORDER BY si.is_cover DESC, si.id ASC 
+           LIMIT 1
+         ) AS cover_image
+       FROM restaurant_spaces s
+       LEFT JOIN restaurant_tables t ON t.space_id = s.id AND t.deleted_at IS NULL
+       WHERE s.status = 'active'
+       GROUP BY s.id, s.space_key, s.label, s.description, s.capacity, s.display_order, s.status, s.created_at, s.updated_at
+       ORDER BY s.display_order ASC, s.id ASC`,
     );
-    res.json({ success: true, areas: rows.map(mapArea) });
+    res.json({ success: true, areas: rows.map(mapArea), spaces: rows.map(mapArea) });
   } catch (error) {
-    console.error("Lỗi lấy khu vực:", error);
+    console.error("Lỗi lấy không gian/khu vực:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi lấy khu vực.",
+      message: "Lỗi server khi lấy không gian/khu vực.",
       error: error.message,
     });
   }
 };
 
 exports.createArea = async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const name = String(req.body.name || "").trim();
+    await conn.beginTransaction();
+
+    const name = String(req.body.name || req.body.label || "").trim();
     const description = String(req.body.description || "").trim();
     if (!name) {
+      await conn.rollback();
       return res
         .status(400)
-        .json({ success: false, message: "Vui lòng nhập tên khu vực." });
+        .json({ success: false, message: "Vui lòng nhập tên không gian / khu vực." });
     }
 
-    const [result] = await db.query(
-      `INSERT INTO areas (name, description, status) VALUES (?, ?, 'active')`,
-      [name, description || null],
+    const [maxOrderRows] = await conn.query(
+      "SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order FROM restaurant_spaces",
     );
-    const [rows] = await db.query(`SELECT * FROM areas WHERE id = ? LIMIT 1`, [
-      result.insertId,
+    const nextOrder = maxOrderRows[0]?.next_order || 1;
+
+    const spaceKey =
+      "space_" +
+      Math.random().toString(36).substring(2, 8);
+
+    const [result] = await conn.query(
+      `INSERT INTO restaurant_spaces (space_key, label, description, detail_description, capacity, display_order, status) 
+       VALUES (?, ?, ?, '', 0, ?, 'active')`,
+      [spaceKey, name, description || "", nextOrder],
+    );
+    const spaceId = result.insertId;
+
+    const [rows] = await conn.query(`SELECT * FROM restaurant_spaces WHERE id = ? LIMIT 1`, [
+      spaceId,
     ]);
 
+    await conn.commit();
+
     try {
-      const spaceKey =
-        "area_" +
-        result.insertId +
-        "_" +
-        Math.random().toString(36).substring(2, 6);
-      const [maxOrderRows] = await db.query(
-        "SELECT COALESCE(MAX(display_order), 0) + 1 AS next_order FROM restaurant_spaces",
-      );
-      const nextOrder = maxOrderRows[0]?.next_order || 1;
-      await db.query(
-        `INSERT INTO restaurant_spaces (space_key, label, description, detail_description, capacity, display_order, status) VALUES (?, ?, ?, '', 0, ?, 'pending')`,
-        [spaceKey, name, description || "", nextOrder],
-      );
-    } catch (spaceErr) {
-      console.warn(
-        "Không thể tạo không gian pending cho khu vực mới:",
-        spaceErr.message,
-      );
+      getIO().emit("spaces_updated", { action: "create", spaceId });
+      getIO().emit("areas_updated");
+      getIO().emit("table_updated", { source: "space_created" });
+    } catch (ioErr) {
+      console.error("Socket emit error:", ioErr);
     }
 
     res.status(201).json({
       success: true,
-      message: "Thêm khu vực thành công.",
+      message: "Thêm không gian / khu vực thành công.",
       area: mapArea(rows[0]),
     });
   } catch (error) {
-    console.error("Lỗi thêm khu vực:", error);
+    await conn.rollback();
+    console.error("Lỗi thêm không gian / khu vực:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi thêm khu vực.",
+      message: "Lỗi server khi thêm không gian / khu vực.",
       error: error.message,
     });
+  } finally {
+    conn.release();
   }
 };
 
 exports.updateArea = async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const areaId = Number(req.params.id);
-    const name = String(req.body.name || "").trim();
+    await conn.beginTransaction();
+
+    const spaceId = Number(req.params.id);
+    const name = String(req.body.name || req.body.label || "").trim();
     const description = String(req.body.description || "").trim();
     if (!name) {
+      await conn.rollback();
       return res
         .status(400)
-        .json({ success: false, message: "Vui lòng nhập tên khu vực." });
+        .json({ success: false, message: "Vui lòng nhập tên không gian / khu vực." });
     }
 
-    await db.query(
-      `UPDATE areas SET name = ?, description = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
-      [name, description || null, areaId],
+    await conn.query(
+      `UPDATE restaurant_spaces 
+       SET label = ?, description = ?, updated_at = NOW() 
+       WHERE id = ?`,
+      [name, description || "", spaceId],
     );
-    const [rows] = await db.query(`SELECT * FROM areas WHERE id = ? LIMIT 1`, [
-      areaId,
+
+    const [rows] = await conn.query(`SELECT * FROM restaurant_spaces WHERE id = ? LIMIT 1`, [
+      spaceId,
     ]);
+
+    await conn.commit();
+
+    try {
+      getIO().emit("spaces_updated", { action: "update", spaceId });
+      getIO().emit("areas_updated");
+      getIO().emit("table_updated", { source: "space_updated" });
+    } catch (ioErr) {
+      console.error("Socket emit error:", ioErr);
+    }
+
     res.json({
       success: true,
-      message: "Cập nhật khu vực thành công.",
+      message: "Cập nhật không gian / khu vực thành công.",
       area: mapArea(rows[0]),
     });
   } catch (error) {
-    console.error("Lỗi cập nhật khu vực:", error);
+    await conn.rollback();
+    console.error("Lỗi cập nhật không gian / khu vực:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi cập nhật khu vực.",
+      message: "Lỗi server khi cập nhật không gian / khu vực.",
       error: error.message,
     });
+  } finally {
+    conn.release();
   }
 };
 
 exports.deleteArea = async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const areaId = Number(req.params.id);
-    const [tableRows] = await db.query(
-      `SELECT id FROM restaurant_tables WHERE area_id = ? AND deleted_at IS NULL LIMIT 1`,
-      [areaId],
+    await conn.beginTransaction();
+
+    const spaceId = Number(req.params.id);
+    const [tableRows] = await conn.query(
+      `SELECT id, table_code FROM restaurant_tables WHERE space_id = ? AND deleted_at IS NULL`,
+      [spaceId],
     );
     if (tableRows.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Không thể xóa khu vực đang có bàn.",
-      });
+      const tableCodes = tableRows.map((t) => t.table_code);
+      const [bookingRows] = await conn.query(
+        `SELECT id FROM bookings WHERE selected_table IN (?) AND status IN ('pending', 'confirmed', 'serving') AND deleted_at IS NULL LIMIT 1`,
+        [tableCodes],
+      );
+      if (bookingRows.length > 0) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Không thể xóa không gian đang có bàn có lịch đặt bàn hoặc đang phục vụ.",
+        });
+      }
     }
 
-    const [areaRows] = await db.query("SELECT name FROM areas WHERE id = ?", [
-      areaId,
-    ]);
-    const areaName = areaRows[0]?.name;
+    await conn.query("DELETE FROM space_images WHERE space_id = ?", [spaceId]);
+    await conn.query("DELETE FROM restaurant_spaces WHERE id = ?", [spaceId]);
 
-    await db.query(
-      `UPDATE areas SET deleted_at = NOW(), status = 'inactive', updated_at = NOW() WHERE id = ?`,
-      [areaId],
-    );
-    if (areaName) {
-      await db.query("DELETE FROM restaurant_spaces WHERE label = ?", [
-        areaName,
-      ]);
+    await conn.commit();
+
+    try {
+      getIO().emit("spaces_updated", { action: "delete", spaceId });
+      getIO().emit("areas_updated");
+      getIO().emit("table_updated", { source: "space_deleted" });
+    } catch (ioErr) {
+      console.error("Socket emit error:", ioErr);
     }
 
-    res.json({ success: true, message: "Xóa khu vực thành công.", areaId });
+    res.json({ success: true, message: "Xóa không gian / khu vực thành công.", areaId: spaceId, spaceId });
   } catch (error) {
-    console.error("Lỗi xóa khu vực:", error);
+    await conn.rollback();
+    console.error("Lỗi xóa không gian / khu vực:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi xóa khu vực.",
+      message: "Lỗi server khi xóa không gian / khu vực.",
       error: error.message,
     });
+  } finally {
+    conn.release();
   }
 };
 
 exports.getTables = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT t.*, a.name AS area_name FROM restaurant_tables t LEFT JOIN areas a ON a.id = t.area_id WHERE t.deleted_at IS NULL ORDER BY a.id ASC, t.table_code ASC`,
+      `SELECT t.*, s.label AS space_label, s.label AS area_name, s.space_key 
+       FROM restaurant_tables t 
+       LEFT JOIN restaurant_spaces s ON s.id = t.space_id 
+       WHERE t.deleted_at IS NULL 
+       ORDER BY s.display_order ASC, s.id ASC, t.table_code ASC`,
     );
     res.json({ success: true, tables: rows.map(mapTable) });
   } catch (error) {
@@ -263,16 +349,16 @@ exports.getTables = async (req, res) => {
 
 exports.createTable = async (req, res) => {
   try {
-    const areaId = Number(req.body.areaId);
+    const spaceId = Number(req.body.spaceId || req.body.areaId);
     let code = String(req.body.code || req.body.tableCode || "").trim();
     const seats = Number(req.body.capacity || req.body.seats || 4);
     const status = String(req.body.status || "available").trim();
     const description = String(req.body.description || "").trim();
 
-    if (!areaId) {
+    if (!spaceId) {
       return res
         .status(400)
-        .json({ success: false, message: "Vui lòng chọn khu vực." });
+        .json({ success: false, message: "Vui lòng chọn không gian / khu vực." });
     }
     if (!Number.isInteger(seats) || seats <= 0) {
       return res
@@ -286,7 +372,7 @@ exports.createTable = async (req, res) => {
     }
 
     if (!code) {
-      code = await generateTableCodeByArea(areaId);
+      code = await generateTableCodeByArea(spaceId);
     }
 
     const [existedRows] = await db.query(
@@ -300,12 +386,15 @@ exports.createTable = async (req, res) => {
     }
 
     const [result] = await db.query(
-      `INSERT INTO restaurant_tables (area_id, table_code, seats, status, description) VALUES (?, ?, ?, ?, ?)`,
-      [areaId, code, seats, status, description || null],
+      `INSERT INTO restaurant_tables (space_id, table_code, seats, status, description) VALUES (?, ?, ?, ?, ?)`,
+      [spaceId, code, seats, status, description || null],
     );
 
     const [rows] = await db.query(
-      `SELECT t.*, a.name AS area_name FROM restaurant_tables t LEFT JOIN areas a ON a.id = t.area_id WHERE t.id = ? LIMIT 1`,
+      `SELECT t.*, s.label AS space_label, s.label AS area_name, s.space_key 
+       FROM restaurant_tables t 
+       LEFT JOIN restaurant_spaces s ON s.id = t.space_id 
+       WHERE t.id = ? LIMIT 1`,
       [result.insertId],
     );
 
@@ -336,17 +425,17 @@ exports.updateTable = async (req, res) => {
   try {
     await conn.beginTransaction();
     const tableId = Number(req.params.id);
-    const areaId = Number(req.body.areaId);
+    const spaceId = Number(req.body.spaceId || req.body.areaId);
     const code = String(req.body.code || req.body.tableCode || "").trim();
     const seats = Number(req.body.capacity || req.body.seats || 4);
     const status = String(req.body.status || "available").trim();
     const description = String(req.body.description || "").trim();
 
-    if (!areaId || !code) {
+    if (!spaceId || !code) {
       await conn.rollback();
       return res.status(400).json({
         success: false,
-        message: "Vui lòng chọn khu vực và nhập mã bàn.",
+        message: "Vui lòng chọn không gian / khu vực và nhập mã bàn.",
       });
     }
     if (!TABLE_STATUSES.includes(status)) {
@@ -383,12 +472,15 @@ exports.updateTable = async (req, res) => {
     }
 
     await conn.query(
-      `UPDATE restaurant_tables SET area_id = ?, table_code = ?, seats = ?, status = ?, description = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
-      [areaId, code, seats, status, description || null, tableId],
+      `UPDATE restaurant_tables SET space_id = ?, table_code = ?, seats = ?, status = ?, description = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
+      [spaceId, code, seats, status, description || null, tableId],
     );
 
     const [rows] = await conn.query(
-      `SELECT t.*, a.name AS area_name FROM restaurant_tables t LEFT JOIN areas a ON a.id = t.area_id WHERE t.id = ? LIMIT 1`,
+      `SELECT t.*, s.label AS space_label, s.label AS area_name, s.space_key 
+       FROM restaurant_tables t 
+       LEFT JOIN restaurant_spaces s ON s.id = t.space_id 
+       WHERE t.id = ? LIMIT 1`,
       [tableId],
     );
 
@@ -457,25 +549,35 @@ exports.updateTableStatus = async (req, res) => {
       }
     }
 
-    await conn.query(
-      `UPDATE restaurant_tables SET status = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
-      [status, tableId],
-    );
-
+    let generatedPin = null;
     if (status === "serving") {
+      generatedPin = String(Math.floor(1000 + Math.random() * 9000));
+      await conn.query(
+        `UPDATE restaurant_tables SET status = ?, pin_code = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
+        [status, generatedPin, tableId],
+      );
       await conn.query(
         `UPDATE bookings SET status = 'serving', updated_at = NOW() WHERE selected_table = ? AND status = 'confirmed' AND deleted_at IS NULL`,
         [table.table_code],
       );
-    } else if (status === "available") {
+    } else {
       await conn.query(
-        `UPDATE bookings SET status = 'completed', updated_at = NOW() WHERE selected_table = ? AND status IN ('serving', 'confirmed') AND deleted_at IS NULL`,
-        [table.table_code],
+        `UPDATE restaurant_tables SET status = ?, pin_code = NULL, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
+        [status, tableId],
       );
+      if (status === "available") {
+        await conn.query(
+          `UPDATE bookings SET status = 'completed', updated_at = NOW() WHERE selected_table = ? AND status IN ('serving', 'confirmed') AND deleted_at IS NULL`,
+          [table.table_code],
+        );
+      }
     }
 
     const [rows] = await conn.query(
-      `SELECT t.*, a.name AS area_name FROM restaurant_tables t LEFT JOIN areas a ON a.id = t.area_id WHERE t.id = ? LIMIT 1`,
+      `SELECT t.*, s.label AS space_label, s.label AS area_name, s.space_key 
+       FROM restaurant_tables t 
+       LEFT JOIN restaurant_spaces s ON s.id = t.space_id 
+       WHERE t.id = ? LIMIT 1`,
       [tableId],
     );
 
@@ -484,6 +586,38 @@ exports.updateTableStatus = async (req, res) => {
       getIO().emit("table_updated", { tableId });
     } catch (err) {
       console.error("Emit error:", err);
+    }
+
+    // Gửi email mã PIN không đồng bộ (không block response)
+    if (generatedPin) {
+      db.query(
+        `SELECT customer_name, email, booking_code, booking_date, booking_time
+         FROM bookings
+         WHERE selected_table = ? AND status = 'serving' AND deleted_at IS NULL
+         ORDER BY updated_at DESC LIMIT 1`,
+        [table.table_code]
+      ).then(([bookingRows]) => {
+        if (bookingRows.length > 0) {
+          const b = bookingRows[0];
+          if (b.email) {
+            sendTablePinEmail({
+              to: b.email,
+              name: b.customer_name || "Quý khách",
+              bookingCode: b.booking_code || "",
+              tableCode: table.table_code,
+              pinCode: generatedPin,
+              date: b.booking_date ? new Date(b.booking_date).toLocaleDateString("vi-VN") : "",
+              time: b.booking_time || "",
+            }).then(() => {
+              console.log(`[PIN-Email] ✔️ Đã gửi mã PIN ${generatedPin} cho bàn ${table.table_code} tới ${b.email}`);
+            }).catch(err => {
+              console.error(`[PIN-Email] ❌ Lỗi gửi email PIN cho bàn ${table.table_code}:`, err);
+            });
+          }
+        }
+      }).catch(err => {
+        console.error("[PIN-Email] Lỗi truy vấn booking:", err);
+      });
     }
     if (["maintenance", "disabled"].includes(status)) {
       await createActivityLog({
@@ -546,5 +680,38 @@ exports.deleteTable = async (req, res) => {
       message: "Lỗi server khi xóa bàn.",
       error: error.message,
     });
+  }
+};
+
+exports.checkTableByCode = async (req, res) => {
+  try {
+    const code = req.params.code;
+    const [rows] = await db.query(
+      `SELECT t.id, t.table_code, t.status, t.seats, t.pin_code, s.label AS area_name, s.label AS space_name
+       FROM restaurant_tables t
+       LEFT JOIN restaurant_spaces s ON s.id = t.space_id
+       WHERE LOWER(t.table_code) = LOWER(?) AND t.deleted_at IS NULL LIMIT 1`,
+      [code]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bàn." });
+    }
+
+    const table = rows[0];
+    res.json({
+      success: true,
+      table: {
+        id: table.id,
+        code: table.table_code,
+        status: table.status,
+        seats: table.seats,
+        areaName: table.area_name || table.space_name,
+        isServing: table.status === "serving",
+      }
+    });
+  } catch (error) {
+    console.error("Lỗi kiểm tra bàn:", error);
+    res.status(500).json({ success: false, message: "Lỗi server." });
   }
 };

@@ -1,0 +1,17 @@
+# BÁO CÁO AUDIT CHI TIẾT & ĐỐI CHIẾU MÃ NGUỒN (AUDIT REPORT)
+## Dự án: Hệ thống Quản lý Nhà hàng Dê Hương Sơn
+
+---
+
+## 1. BẢNG TỔNG HỢP ĐỐI CHIẾU & XÁC MINH SOURCE CODE THỰC TẾ
+
+| ID | Mức độ | Vấn Đề (Finding) | Tệp Nguồn / Vị Trí | Hiện Trạng Code | Xác Minh (Verification) | Quy Tắc Vi Phạm | Rủi Ro Kỹ Thuật | Hành Động Khắc Phục Khuyến Nghị |
+| :---: | :---: | :--- | :--- | :--- | :---: | :--- | :--- | :--- |
+| **SEC-01** | **CRITICAL** | Webhook thanh toán SePay không xác thực chữ ký/API Key | [backend/server.js:L53-L105](file:///Users/nguyendinhphu/restaurant-management/backend/server.js#L53-L105) | Không kiểm tra `req.headers["authorization"]` | **VERIFIED** | `05_SECURITY_RULES.md` | Giả mạo thanh toán đơn hàng/đặt cọc | Thêm middleware kiểm tra API Key/Secret của webhook |
+| **PERF-01** | **CRITICAL** | Kéo toàn bộ bảng `orders` vào RAM rồi lọc bằng JS | [backend/src/controllers/orderController.js:L264-L281](file:///Users/nguyendinhphu/restaurant-management/backend/src/controllers/orderController.js#L264-L281) | `SELECT * FROM orders` + `.filter()` | **VERIFIED** | `04_DATABASE_RULES.md` | Out of Memory (OOM) Crash server khi data lớn | Đổi sang câu truy vấn SQL `WHERE user_id = ? ... LIMIT ? OFFSET ?` |
+| **ARCH-01** | **HIGH** | Router chứa hàng trăm dòng SQL thô (Fat Route) | [backend/src/routes/dashboardRoutes.js:L21-L561](file:///Users/nguyendinhphu/restaurant-management/backend/src/routes/dashboardRoutes.js#L21-L561) | Viết `db.query` trực tiếp trong router | **VERIFIED** | `01_ARCHITECTURE_RULES.md` | Code khó bảo trì, khó viết unit test | Tách logic sang Controller và Service |
+| **PERF-02** | **HIGH** | Frontend import đồng bộ 25+ trang không có Code Splitting | [frontend/src/routes/AppRoutes.jsx:L1-L49](file:///Users/nguyendinhphu/restaurant-management/frontend/src/routes/AppRoutes.jsx#L1-L49) | Import tĩnh toàn bộ trang Admin | **VERIFIED** | `03_FRONTEND_RULES.md` | Initial bundle size lớn (>3MB), load chậm trên mobile | Áp dụng `React.lazy()` và `Suspense` cho các trang Admin |
+| **SEC-02** | **HIGH** | Lộ raw SQL Error và thiếu Rate Limit đăng nhập | [backend/src/controllers/authController.js:L180](file:///Users/nguyendinhphu/restaurant-management/backend/src/controllers/authController.js#L180) & `server.js` | `error: error.message`, không có rate limit | **VERIFIED** | `05_SECURITY_RULES.md` | Lộ cấu trúc schema, bị brute-force mật khẩu | Thêm rate limiting và chuẩn hóa thông báo lỗi an toàn |
+| **SCALE-01** | **HIGH** | Cron job `setInterval` gửi mail nằm trong tiến trình server | [backend/server.js:L446](file:///Users/nguyendinhphu/restaurant-management/backend/server.js#L446) | `setInterval` chạy ngầm trong Express | **VERIFIED** | `07_PERFORMANCE_RULES.md` | Gửi trùng email khi scale nhiều instance | Đóng gói hàm quét lịch an toàn, kiểm tra cờ trạng thái |
+| **UX-01** | **MEDIUM** | Nút icon thiếu `aria-label` và thiếu Skeleton UI | [AdminTableComponents.jsx](file:///Users/nguyendinhphu/restaurant-management/frontend/src/components/admin/AdminTableComponents.jsx) | Thiếu thẻ định danh a11y | **VERIFIED** | `03_FRONTEND_RULES.md` | Trải nghiệm người dùng và tiêu chuẩn a11y kém | Bổ sung `aria-label` và cải thiện loading state |
+| **CODE-01** | **LOW** | Hàm xử lý chuỗi và parse JSON bị lặp lại nhiều nơi | `orderController.js`, `bookingController.js` | Hàm `parseJson`, `removeVietnameseTones` lặp | **VERIFIED** | `00_PROJECT_RULES.md` | Vi phạm DRY (Don't Repeat Yourself) | Gom vào thư mục `src/utils/` dùng chung |

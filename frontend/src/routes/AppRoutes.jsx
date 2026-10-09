@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -7,45 +8,47 @@ import {
 } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-
-import Home from "../pages/Home";
-import Register from "../pages/Register";
-import Login from "../pages/Login";
-import VerifyEmailPage from "../pages/VerifyEmailPage";
-import MenuPage from "../pages/MenuPage";
-import CartPage from "../pages/CartPage";
 import ScrollToTop from "../components/ScrollToTop";
-import CheckoutPage from "../pages/CheckoutPage";
-import PaymentQRPage from "../pages/PaymentQRPage";
-import OrderSuccessPage from "../pages/OrderSuccessPage";
-import OrderDetailPage from "../pages/OrderDetailPage";
-import BookingPage from "../pages/BookingPage";
-import BookingSuccessPage from "../pages/BookingSuccessPage";
-import BookingDetailPage from "../pages/BookingDetailPage";
-import DealsPage from "../pages/DealsPage";
-import DealDetailPage from "../pages/DealDetailPage";
-import AboutPage from "../pages/AboutPage";
-import ContactPage from "../pages/ContactPage";
-import ProfilePage from "../pages/ProfilePage";
-import NotFoundPage from "../pages/NotFoundPage";
+import PageLoadingSpinner from "../components/common/PageLoadingSpinner";
+import AdminToast from "../components/admin/AdminToast";
 
-//Admin
-import AdminLoginPage from "../pages/admin/AdminLoginPage";
-import AdminLayout from "../layouts/AdminLayout";
-import AdminProtectedRoute from "../components/admin/AdminProtectedRoute";
+// Lazy loading Customer Pages
+const Home = lazy(() => import("../pages/Home"));
+const Register = lazy(() => import("../pages/Register"));
+const Login = lazy(() => import("../pages/Login"));
+const VerifyEmailPage = lazy(() => import("../pages/VerifyEmailPage"));
+const MenuPage = lazy(() => import("../pages/MenuPage"));
+const CartPage = lazy(() => import("../pages/CartPage"));
+const CheckoutPage = lazy(() => import("../pages/CheckoutPage"));
+const PaymentQRPage = lazy(() => import("../pages/PaymentQRPage"));
+const OrderSuccessPage = lazy(() => import("../pages/OrderSuccessPage"));
+const OrderDetailPage = lazy(() => import("../pages/OrderDetailPage"));
+const BookingPage = lazy(() => import("../pages/BookingPage"));
+const BookingSuccessPage = lazy(() => import("../pages/BookingSuccessPage"));
+const BookingDetailPage = lazy(() => import("../pages/BookingDetailPage"));
+const DealsPage = lazy(() => import("../pages/DealsPage"));
+const DealDetailPage = lazy(() => import("../pages/DealDetailPage"));
+const AboutPage = lazy(() => import("../pages/AboutPage"));
+const ContactPage = lazy(() => import("../pages/ContactPage"));
+const ProfilePage = lazy(() => import("../pages/ProfilePage"));
+const NotFoundPage = lazy(() => import("../pages/NotFoundPage"));
 
-import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
-import AdminOrdersPage from "../pages/admin/AdminOrdersPage";
-import AdminBookingsPage from "../pages/admin/AdminBookingsPage";
-import AdminMenuPage from "../pages/admin/AdminMenuPage";
-import AdminDealsPage from "../pages/admin/AdminDealsPage";
-import AdminUsersPage from "../pages/admin/AdminUsersPage";
-import AdminRevenuePage from "../pages/admin/AdminRevenuePage";
-import AdminTablesPage from "../pages/admin/AdminTablesPage";
-import AdminSpacesPage from "../pages/admin/AdminSpacesPage";
-import AdminRolesPage from "../pages/admin/AdminRolesPage";
-import AdminActivityLogsPage from "../pages/admin/AdminActivityLogsPage";
-import AdminReportPage from "../pages/admin/AdminReportPage";
+// Lazy loading Admin Pages
+const AdminLoginPage = lazy(() => import("../pages/admin/AdminLoginPage"));
+const AdminLayout = lazy(() => import("../layouts/AdminLayout"));
+const AdminProtectedRoute = lazy(() => import("../components/admin/AdminProtectedRoute"));
+const AdminDashboardPage = lazy(() => import("../pages/admin/AdminDashboardPage"));
+const AdminOrdersPage = lazy(() => import("../pages/admin/AdminOrdersPage"));
+const AdminBookingsPage = lazy(() => import("../pages/admin/AdminBookingsPage"));
+const AdminMenuPage = lazy(() => import("../pages/admin/AdminMenuPage"));
+const AdminDealsPage = lazy(() => import("../pages/admin/AdminDealsPage"));
+const AdminUsersPage = lazy(() => import("../pages/admin/AdminUsersPage"));
+const AdminRevenuePage = lazy(() => import("../pages/admin/AdminRevenuePage"));
+const AdminTablesPage = lazy(() => import("../pages/admin/AdminTablesPage"));
+const AdminSpacesPage = lazy(() => import("../pages/admin/AdminSpacesPage"));
+const AdminRolesPage = lazy(() => import("../pages/admin/AdminRolesPage"));
+const AdminActivityLogsPage = lazy(() => import("../pages/admin/AdminActivityLogsPage"));
+const AdminReportPage = lazy(() => import("../pages/admin/AdminReportPage"));
 
 function MainLayout({ children }) {
   const location = useLocation();
@@ -91,183 +94,189 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <AdminToast />
+      <Suspense fallback={<PageLoadingSpinner />}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <MainLayout>
+                <Home />
+              </MainLayout>
+            }
+          />
 
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <MainLayout>
-              <Home />
-            </MainLayout>
-          }
-        />
+          <Route
+            path="/home"
+            element={
+              <MainLayout>
+                <Home />
+              </MainLayout>
+            }
+          />
 
-        <Route
-          path="/home"
-          element={
-            <MainLayout>
-              <Home />
-            </MainLayout>
-          }
-        />
+          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          
+          {/* Menu */}
+          <Route
+            path="/menu"
+            element={
+              <MainLayout>
+                <MenuPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Giỏ hàng */}
+          <Route
+            path="/cart"
+            element={
+              <MainLayout>
+                <CartPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Hình thức phục vụ */}
+          <Route
+            path="/checkout"
+            element={
+              <MainLayout>
+                <CheckoutPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Thanh toán */}
+          <Route
+            path="/payment-qr"
+            element={
+              <MainLayout>
+                <PaymentQRPage />
+              </MainLayout>
+            }
+          />
+          <Route path="/order-success" element={<OrderSuccessPage />} />
+          <Route
+            path="/profile/order-detail/:id"
+            element={
+              <MainLayout>
+                <OrderDetailPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Đặt bàn */}
+          <Route
+            path="/booking"
+            element={
+              <MainLayout>
+                <BookingPage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/booking-success"
+            element={
+              <MainLayout>
+                <BookingSuccessPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Khuyến mãi */}
+          <Route
+            path="/deals"
+            element={
+              <MainLayout>
+                <DealsPage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/deals/:dealId"
+            element={
+              <MainLayout>
+                <DealDetailPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Giới thiệu & Liên hệ */}
+          <Route
+            path="/about"
+            element={
+              <MainLayout>
+                <AboutPage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/contact"
+            element={
+              <MainLayout>
+                <ContactPage />
+              </MainLayout>
+            }
+          />
+          
+          {/* Trang cá nhân */}
+          <Route
+            path="/profile"
+            element={
+              <MainLayout>
+                <ProfilePage />
+              </MainLayout>
+            }
+          />
+          <Route
+            path="/profile/booking-detail/:id"
+            element={
+              <MainLayout>
+                <BookingDetailPage />
+              </MainLayout>
+            }
+          />
 
-        <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
-        {/* Menu */}
-        <Route
-          path="/menu"
-          element={
-            <MainLayout>
-              <MenuPage />
-            </MainLayout>
-          }
-        />
-        {/* Giỏ hàng */}
-        <Route
-          path="/cart"
-          element={
-            <MainLayout>
-              <CartPage />
-            </MainLayout>
-          }
-        />
-        {/* Hình thức phục vụ */}
-        <Route
-          path="/checkout"
-          element={
-            <MainLayout>
-              <CheckoutPage />
-            </MainLayout>
-          }
-        />
-        {/* Thanh toán */}
-        <Route
-          path="/payment-qr"
-          element={
-            <MainLayout>
-              <PaymentQRPage />
-            </MainLayout>
-          }
-        />
-        <Route path="/order-success" element={<OrderSuccessPage />} />
-        <Route
-          path="/profile/order-detail/:id"
-          element={
-            <MainLayout>
-              <OrderDetailPage />
-            </MainLayout>
-          }
-        />
-        {/* Đạt bàn */}
-        <Route
-          path="/booking"
-          element={
-            <MainLayout>
-              <BookingPage />
-            </MainLayout>
-          }
-        />
-        {/* Đặt bàn */}
-        <Route
-          path="/booking-success"
-          element={
-            <MainLayout>
-              <BookingSuccessPage />
-            </MainLayout>
-          }
-        />
-        {/* Khuyến mãi */}
-        <Route
-          path="/deals"
-          element={
-            <MainLayout>
-              <DealsPage />
-            </MainLayout>
-          }
-        />
-        {/* Khuyến mãi chi tiết */}
-        <Route
-          path="/deals/:dealId"
-          element={
-            <MainLayout>
-              <DealDetailPage />
-            </MainLayout>
-          }
-        />
-        {/* Giới thiệu */}
-        <Route
-          path="/about"
-          element={
-            <MainLayout>
-              <AboutPage />
-            </MainLayout>
-          }
-        />
-        {/* Liên hệ */}
-        <Route
-          path="/contact"
-          element={
-            <MainLayout>
-              <ContactPage />
-            </MainLayout>
-          }
-        />
-        {/* Trang cá nhân */}
-        <Route
-          path="/profile"
-          element={
-            <MainLayout>
-              <ProfilePage />
-            </MainLayout>
-          }
-        />
-        {/* CHi tiết đặt bàn */}
-        <Route
-          path="/profile/booking-detail/:id"
-          element={
-            <MainLayout>
-              <BookingDetailPage />
-            </MainLayout>
-          }
-        />
+          {/* Admin Routes */}
+          <Route path="/admin/login" element={<AdminLoginPage />} />
 
-        {/* Admin */}
-        <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route
+            path="/admin"
+            element={
+              <AdminProtectedRoute>
+                <AdminLayout />
+              </AdminProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboardPage />} />
+            <Route path="orders" element={<AdminOrdersPage />} />
+            <Route path="bookings" element={<AdminBookingsPage />} />
+            <Route path="tables" element={<AdminTablesPage />} />
+            <Route path="spaces" element={<AdminSpacesPage />} />
+            <Route path="menu" element={<AdminMenuPage />} />
+            <Route path="deals" element={<AdminDealsPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="revenue" element={<AdminRevenuePage />} />
+            <Route path="reports" element={<AdminReportPage />} />
+            <Route path="roles" element={<AdminRolesPage />} />
+            <Route path="logs" element={<AdminActivityLogsPage />} />
+          </Route>
 
-        <Route
-          path="/admin"
-          element={
-            <AdminProtectedRoute>
-              <AdminLayout />
-            </AdminProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="dashboard" replace />} />
-
-          <Route path="dashboard" element={<AdminDashboardPage />} />
-          <Route path="orders" element={<AdminOrdersPage />} />
-          <Route path="bookings" element={<AdminBookingsPage />} />
-          <Route path="tables" element={<AdminTablesPage />} />
-          <Route path="spaces" element={<AdminSpacesPage />} />
-          <Route path="menu" element={<AdminMenuPage />} />
-          <Route path="deals" element={<AdminDealsPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
-          <Route path="revenue" element={<AdminRevenuePage />} />
-          <Route path="reports" element={<AdminReportPage />} />
-          <Route path="roles" element={<AdminRolesPage />} />
-          <Route path="logs" element={<AdminActivityLogsPage />} />
-        </Route>
-        {/* 404 */}
-        <Route
-          path="*"
-          element={
-            <MainLayout>
-              <NotFoundPage />
-            </MainLayout>
-          }
-        />
-      </Routes>
+          {/* 404 Not Found */}
+          <Route
+            path="*"
+            element={
+              <MainLayout>
+                <NotFoundPage />
+              </MainLayout>
+            }
+          />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

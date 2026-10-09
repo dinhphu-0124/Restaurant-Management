@@ -1,3 +1,56 @@
+export const DEFAULT_DEAL_TYPES = [
+  {
+    name: "Combo",
+    description: "Áp dụng cho các gói combo/set món ăn định sẵn, giúp khách tiết kiệm chi phí so với gọi món lẻ.",
+  },
+  {
+    name: "Sinh nhật",
+    description: "Dành riêng cho khách hàng tổ chức tiệc sinh nhật hoặc có ngày sinh trong tuần/tháng áp dụng.",
+  },
+  {
+    name: "Đặt món",
+    description: "Áp dụng khi khách đặt món trực tuyến hoặc gọi món giao tận nơi/mang về.",
+  },
+  {
+    name: "Đặt bàn",
+    description: "Áp dụng khi khách hàng đặt giữ chỗ trước qua website hoặc ứng dụng.",
+  },
+  {
+    name: "Ngày lễ",
+    description: "Chương trình ưu đãi vào các dịp lễ lớn (Tết, Giáng sinh, 8/3, 20/10, Valentine...).",
+  },
+  {
+    name: "Đặc biệt",
+    description: "Các chương trình khuyến mãi độc quyền, flash sale, tri ân khách hàng hoặc sự kiện đặc biệt.",
+  },
+  {
+    name: "Thành viên",
+    description: "Ưu đãi dành riêng cho khách hàng thân thiết có hạng thành viên (Bạc, Vàng, Kim Cương).",
+  },
+];
+
+export const getStoredDealTypes = () => {
+  try {
+    const raw = localStorage.getItem("app_deal_types_v2");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (err) {
+    console.error("Lỗi đọc danh sách loại khuyến mãi:", err);
+  }
+  return DEFAULT_DEAL_TYPES;
+};
+
+export const saveStoredDealTypes = (types) => {
+  try {
+    localStorage.setItem("app_deal_types_v2", JSON.stringify(types));
+    window.dispatchEvent(new Event("deal_types_updated"));
+  } catch (err) {
+    console.error("Lỗi lưu danh sách loại khuyến mãi:", err);
+  }
+};
+
 export const EMPTY_DEAL_FORM = {
   code: "", name: "", subtitle: "", type: "Combo", discount: "", condition: "",
   conditionItems: [], serviceConditionItems: { dinein: [], delivery: [], pickup: [] },
@@ -14,7 +67,10 @@ export const formatDateDeal = (value) => {
   if (!value) return "Chưa có";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("vi-VN");
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
 export const getStatusTextDeal = (status) => {

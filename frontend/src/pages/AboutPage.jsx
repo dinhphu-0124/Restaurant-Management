@@ -1,4 +1,8 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { spaceService } from "../services/spaceService";
+import { socket } from "../utils/socket";
+import SpacePreviewModal from "../components/home/SpacePreviewModal";
 
 import {
   Leaf,
@@ -16,6 +20,7 @@ import {
   Star,
   Quote,
   Utensils,
+  ImageIcon,
 } from "lucide-react";
 
 import hero1 from "../assets/images/Home/hero-1.png";
@@ -45,6 +50,56 @@ import tiecSN from "../assets/images/About/tiec-sinh-nhat.png";
 
 function AboutPage() {
   const navigate = useNavigate();
+
+  const [spaces, setSpaces] = useState([]);
+  const [showSpaceModal, setShowSpaceModal] = useState(false);
+  const [activeSpaceTab, setActiveSpaceTab] = useState("");
+  const [previewImage, setPreviewImage] = useState(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
+
+  const getImgUrl = (img) => {
+    if (!img) return "";
+    const url = typeof img === "string" ? img : img.url || img.image || "";
+    if (!url) return "";
+    if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
+      return url;
+    }
+    if (url.startsWith("/uploads/")) {
+      return `http://localhost:5001${url}`;
+    }
+    return url;
+  };
+
+  const fetchActiveSpaces = async () => {
+    try {
+      const data = await spaceService.getActiveSpaces();
+      if (Array.isArray(data)) {
+        setSpaces(data);
+        if (!activeSpaceTab && data.length > 0) {
+          setActiveSpaceTab(data[0].key);
+        }
+      }
+    } catch (err) {
+      console.error("Lỗi lấy danh sách không gian:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveSpaces();
+
+    const handleUpdate = () => fetchActiveSpaces();
+    window.addEventListener("spacesUpdated", handleUpdate);
+    socket.on("spaces_updated", handleUpdate);
+    socket.on("areas_updated", handleUpdate);
+
+    return () => {
+      window.removeEventListener("spacesUpdated", handleUpdate);
+      socket.off("spaces_updated", handleUpdate);
+      socket.off("areas_updated", handleUpdate);
+    };
+  }, []);
+
+  const activeSpace = spaces.find((s) => s.key === activeSpaceTab) || spaces[0] || null;
 
   const timeline = [
     {
@@ -225,7 +280,7 @@ function AboutPage() {
             </p>
 
             <h1
-              className=" text-5xl md:text-[76px] text-green-800 leading-[1.15] uppercase max-w-3xl"
+              className=" text-5xl md:text-[76px] text-[#145c30] leading-[1.15] uppercase max-w-3xl"
               style={{
                 fontFamily: "'Playfair Display', serif",
                 fontWeight: 800,
@@ -337,7 +392,7 @@ function AboutPage() {
             <div className="h-full flex flex-col p-6">
               {/* Tiêu đề */}
               <div className="shrink-0">
-                <h2 className="text-2xl font-black text-green-900 uppercase">
+                <h2 className="text-2xl font-black text-[#145c30] uppercase">
                   Câu chuyện Hương Sơn
                 </h2>
 
@@ -505,43 +560,76 @@ function AboutPage() {
       <section className="max-w-7xl mx-auto px-5 pb-10">
         <SectionTitle title="Không gian nhà hàng" />
 
-        <div className="grid md:grid-cols-3 gap-4 mt-7">
-          <ImageCard
-            image={tangTret}
-            title="Khu vực tầng 1"
-            text="Ấm cúng, phù hợp gia đình."
-            onClick={() =>
-              navigate("/home", { state: { openSpace: "ground" } })
-            }
-          />
-
-          <ImageCard
-            image={tangHai}
-            title="Khu vực tầng 2"
-            text="Rộng rãi, thoáng mát."
-            onClick={() =>
-              navigate("/home", { state: { openSpace: "floor2" } })
-            }
-          />
-
-          <div className="grid gap-4">
-            <ImageCard
-              image={phongVip}
-              title="Phòng VIP"
-              text="Riêng tư, sang trọng."
-              small
-              onClick={() => navigate("/home", { state: { openSpace: "vip" } })}
-            />
-
-            <ImageCard
-              image={tiecSN}
-              title="Tiệc sinh nhật"
-              text="Trang trí theo yêu cầu."
-              small
-              onClick={() => navigate("/booking")}
-            />
+        {spaces.length === 0 ? (
+          <div className="py-12 text-center text-gray-400 font-medium text-sm mt-7">
+            Đang tải không gian nhà hàng...
           </div>
-        </div>
+        ) : (
+          <div className="grid md:grid-cols-3 gap-4 mt-7">
+            {/* Card 1 */}
+            {spaces[0] && (
+              <ImageCard
+                image={getImgUrl(spaces[0].coverImage || spaces[0].images?.[0]) || tangTret}
+                title={spaces[0].label}
+                text={spaces[0].description || "Ấm cúng, phù hợp gia đình."}
+                onClick={() => {
+                  setActiveSpaceTab(spaces[0].key);
+                  setShowSpaceModal(true);
+                }}
+              />
+            )}
+
+            {/* Card 2 */}
+            {spaces[1] && (
+              <ImageCard
+                image={getImgUrl(spaces[1].coverImage || spaces[1].images?.[0]) || tangHai}
+                title={spaces[1].label}
+                text={spaces[1].description || "Rộng rãi, thoáng mát."}
+                onClick={() => {
+                  setActiveSpaceTab(spaces[1].key);
+                  setShowSpaceModal(true);
+                }}
+              />
+            )}
+
+            {/* Card 3 or extra column */}
+            <div className="grid gap-4">
+              {spaces[2] && (
+                <ImageCard
+                  image={getImgUrl(spaces[2].coverImage || spaces[2].images?.[0]) || phongVip}
+                  title={spaces[2].label}
+                  text={spaces[2].description || "Riêng tư, sang trọng."}
+                  small
+                  onClick={() => {
+                    setActiveSpaceTab(spaces[2].key);
+                    setShowSpaceModal(true);
+                  }}
+                />
+              )}
+
+              {spaces[3] ? (
+                <ImageCard
+                  image={getImgUrl(spaces[3].coverImage || spaces[3].images?.[0]) || tiecSN}
+                  title={spaces[3].label}
+                  text={spaces[3].description || "Không gian mở, thoáng đãng."}
+                  small
+                  onClick={() => {
+                    setActiveSpaceTab(spaces[3].key);
+                    setShowSpaceModal(true);
+                  }}
+                />
+              ) : (
+                <ImageCard
+                  image={tiecSN}
+                  title="Đặt tiệc theo yêu cầu"
+                  text="Trang trí và phục vụ theo yêu cầu."
+                  small
+                  onClick={() => navigate("/booking")}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* VALUES + STATS */}
@@ -650,6 +738,22 @@ function AboutPage() {
           </div>
         </div>
       </section>
+
+      {/* Popup xem không gian */}
+      <SpacePreviewModal
+        showSpaceModal={showSpaceModal}
+        setShowSpaceModal={setShowSpaceModal}
+        goatIcon={goatIcon}
+        spaceTabsData={spaces}
+        activeSpaceTab={activeSpaceTab}
+        setActiveSpaceTab={setActiveSpaceTab}
+        activeSpace={activeSpace}
+        getImgUrl={getImgUrl}
+        setPreviewImage={setPreviewImage}
+        setPreviewIndex={setPreviewIndex}
+        previewImage={previewImage}
+        previewIndex={previewIndex}
+      />
     </div>
   );
 }
@@ -658,7 +762,7 @@ function SectionTitle({ title }) {
   return (
     <div className="text-center">
       <h2
-        className="text-2xl md:text-[34px] text-green-800 uppercase tracking-wide"
+        className="text-2xl md:text-[34px] text-[#145c30] uppercase tracking-wide"
         style={{
           fontFamily: "'Playfair Display', serif",
           fontWeight: 800,

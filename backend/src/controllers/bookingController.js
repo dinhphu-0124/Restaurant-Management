@@ -97,6 +97,7 @@ const validateTableCapacity = async ({
   selectedTable,
   guests,
   date,
+  selectedArea = null,
   conn = db,
 }) => {
   if (!selectedTable) return null;
@@ -113,10 +114,14 @@ const validateTableCapacity = async ({
       t.table_code,
       t.seats,
       t.status,
-      t.area_id,
-      a.name AS area_name
+      t.space_id,
+      s.label AS area_name,
+      s.label AS space_name,
+      s.status AS area_status,
+      s.status AS space_status,
+      s.space_key
     FROM restaurant_tables t
-    LEFT JOIN areas a ON a.id = t.area_id
+    LEFT JOIN restaurant_spaces s ON s.id = t.space_id
     WHERE t.table_code = ?
       AND t.deleted_at IS NULL
     LIMIT 1
@@ -130,6 +135,23 @@ const validateTableCapacity = async ({
     throw error;
   }
   const table = rows[0];
+  if (table.space_status === "inactive" || table.area_status === "inactive") {
+    const error = new Error(
+      "Khu vực / Không gian chứa bàn này hiện đang tạm ẩn. Vui lòng chọn không gian khác."
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+  if (selectedArea && selectedArea !== "all") {
+    const spaceIdMatch = Number(selectedArea) === table.space_id;
+    const keyMatch = table.space_key && table.space_key.toLowerCase() === String(selectedArea).toLowerCase();
+    const nameMatch = table.area_name && table.area_name.toLowerCase() === String(selectedArea).toLowerCase();
+    if (!spaceIdMatch && !keyMatch && !nameMatch) {
+      const error = new Error(`Bàn ${table.table_code} không thuộc không gian / khu vực đã chọn.`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
   if (["maintenance", "disabled"].includes(table.status)) {
     const error = new Error(
       `Bàn ${table.table_code} hiện đang bảo trì hoặc vô hiệu hóa. Vui lòng chọn bàn khác.`,
@@ -171,6 +193,7 @@ exports.createBooking = async (req, res) => {
     const time = String(req.body.time || "").trim();
     const guests = Number(req.body.guests || req.body.people || 1);
     const selectedTable = String(req.body.selectedTable || "").trim();
+    const selectedArea = req.body.selectedArea || null;
 
     if (!customerName || !phone || !date || !time || !guests) {
       await conn.rollback();
@@ -181,29 +204,63 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    let validatedTable = null;
     if (selectedTable) {
-      await validateTableCapacity({ selectedTable, guests, date, conn });
-      const isConflict = await hasTableConflict({ date, selectedTable, conn });
-      if (isConflict) {
+      validatedTable = await validateTableCapacity({
+        selectedTable,
+        guests,
+        date,
+        selectedArea,
+        conn,
+      });
+      const [tableRows] = await conn.query(
+        `SELECT status, pin_code FROM restaurant_tables WHERE table_code = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+        [selectedTable]
+      );
+      if (tableRows.length > 0) {
+        const table = tableRows[0];
+        if (table.status === "serving") {
+          const inputPin = String(req.body.pinCode || "").trim();
+          if (!table.pin_code || inputPin !== String(table.pin_code)) {
+            await conn.rollback();
+            return res.status(400).json({
+              success: false,
+              message: "Mã PIN của bàn không chính xác. Vui lòng nhập đúng mã PIN hiển thị tại bàn."
+            });
+          }
+        } else {
+          const isConflict = await hasTableConflict({ date, selectedTable, conn });
+          if (isConflict) {
+            await conn.rollback();
+            return res.status(409).json({
+              success: false,
+              message: "Bàn này đã có lịch đặt trong ngày đã chọn.",
+            });
+          }
+        }
+      } else {
         await conn.rollback();
-        return res.status(409).json({
+        return res.status(400).json({
           success: false,
-          message: "Bàn này đã có lịch đặt trong ngày đã chọn.",
+          message: "Bàn được chọn không tồn tại."
         });
       }
     }
 
+    const depositAmount = Number(req.body.depositAmount || 0);
+
     const [result] = await conn.query(
       `
       INSERT INTO bookings (
-        user_id, source, type, customer_name, phone, email, booking_date, booking_time, guests,
+        user_id, table_id, source, type, customer_name, phone, email, booking_date, booking_time, guests,
         selected_area, selected_area_title, selected_table, note, cart_items, subtotal, total, total_qty,
-        status, created_by
+        status, created_by, deposit_amount
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'user')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'user', ?)
       `,
       [
         req.user.id,
+        validatedTable ? validatedTable.id : null,
         req.body.source || "booking_page",
         req.body.type || "table_only",
         customerName,
@@ -213,13 +270,14 @@ exports.createBooking = async (req, res) => {
         time,
         guests,
         req.body.selectedArea || null,
-        req.body.selectedAreaTitle || "Nhà hàng sắp xếp",
+        req.body.selectedAreaTitle || (validatedTable ? validatedTable.area_name : "Nhà hàng sắp xếp"),
         selectedTable || null,
         req.body.note || null,
         toJsonString(req.body.cartItems || []),
         Number(req.body.subtotal || 0),
         Number(req.body.total || 0),
         Number(req.body.totalQty || 0),
+        depositAmount
       ],
     );
 
@@ -235,11 +293,33 @@ exports.createBooking = async (req, res) => {
     );
     await conn.commit();
 
-    try {
-      getIO().emit("table_updated", { source: "booking_created" });
-      getIO().emit("booking_updated", { id: bookingDbId, status: "pending" });
-    } catch (err) {
-      console.error("Emit error:", err);
+    if (depositAmount === 0) {
+      try {
+        getIO().emit("table_updated", { source: "booking_created" });
+        getIO().emit("booking_updated", { id: result.insertId, status: "pending" });
+      } catch (err) {
+        console.error("Emit error:", err);
+      }
+    }
+
+    const depositAmt = Number(req.body.depositAmount || 0);
+    if (email && depositAmt === 0) {
+      try {
+        const { sendBookingEmail } = require("../utils/mail");
+        sendBookingEmail({
+          to: email,
+          name: customerName,
+          bookingCode: bookingCode,
+          status: "pending",
+          date: date,
+          time: time,
+          guests: guests,
+          note: req.body.note || null,
+          total: Number(req.body.total || 0)
+        }).catch(err => console.error("Lỗi gửi mail đặt bàn:", err));
+      } catch (mailErr) {
+        console.error("Lỗi khởi tạo mail utility:", mailErr);
+      }
     }
 
     res.status(201).json({
@@ -354,7 +434,7 @@ exports.getAdminBookings = async (req, res) => {
       .trim()
       .toLowerCase();
     const date = String(req.query.date || "").trim();
-    const where = ["deleted_at IS NULL"];
+    const where = ["deleted_at IS NULL", "(deposit_amount = 0 OR payment_status = 'paid' OR created_by = 'admin')"];
     const params = [];
 
     if (status !== "all") {
@@ -413,8 +493,15 @@ exports.adminCreateBooking = async (req, res) => {
     const status = ALLOWED_STATUSES.includes(req.body.status)
       ? req.body.status
       : "pending";
+    let validatedTable = null;
     if (selectedTable && ["pending", "confirmed"].includes(status)) {
-      await validateTableCapacity({ selectedTable, guests, date, conn });
+      validatedTable = await validateTableCapacity({
+        selectedTable,
+        guests,
+        date,
+        selectedArea: req.body.selectedArea,
+        conn,
+      });
       const isConflict = await hasTableConflict({ date, selectedTable, conn });
       if (isConflict) {
         await conn.rollback();
@@ -428,13 +515,14 @@ exports.adminCreateBooking = async (req, res) => {
     const [result] = await conn.query(
       `
       INSERT INTO bookings (
-        source, type, customer_name, phone, email, booking_date, booking_time, guests,
+        table_id, source, type, customer_name, phone, email, booking_date, booking_time, guests,
         selected_area, selected_area_title, selected_table, note, cart_items, subtotal, total, total_qty,
         status, created_by, assigned_by, assigned_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)
       `,
       [
+        validatedTable ? validatedTable.id : null,
         "admin_page",
         req.body.type || "table_only",
         customerName,
@@ -444,7 +532,7 @@ exports.adminCreateBooking = async (req, res) => {
         time,
         guests,
         req.body.selectedArea || null,
-        req.body.selectedAreaTitle || null,
+        req.body.selectedAreaTitle || (validatedTable ? validatedTable.area_name : null),
         selectedTable || null,
         req.body.note || null,
         toJsonString(req.body.cartItems || []),
@@ -471,9 +559,28 @@ exports.adminCreateBooking = async (req, res) => {
 
     try {
       getIO().emit("table_updated", { source: "booking_admin_created" });
-      getIO().emit("booking_updated", { id: bookingDbId, status: "confirmed" });
+      getIO().emit("booking_updated", { id: result.insertId, status });
     } catch (err) {
       console.error("Emit error:", err);
+    }
+
+    if (rows[0] && rows[0].email) {
+      try {
+        const { sendBookingEmail } = require("../utils/mail");
+        sendBookingEmail({
+          to: rows[0].email,
+          name: rows[0].customer_name,
+          bookingCode: rows[0].booking_code,
+          status: status,
+          date: rows[0].booking_date ? new Date(rows[0].booking_date).toLocaleDateString("vi-VN") : "",
+          time: rows[0].booking_time,
+          guests: rows[0].guests,
+          note: rows[0].note || null,
+          total: Number(rows[0].total || 0)
+        }).catch(err => console.error("Lỗi gửi mail admin tạo đặt bàn:", err));
+      } catch (mailErr) {
+        console.error("Lỗi khởi tạo mail utility:", mailErr);
+      }
     }
 
     res.status(201).json({
@@ -519,11 +626,13 @@ exports.adminUpdateBooking = async (req, res) => {
     const nextTable = req.body.selectedTable ?? current.selected_table;
     const nextGuests = Number(req.body.guests ?? current.guests ?? 1);
 
+    let validatedTable = null;
     if (nextTable && ["pending", "confirmed"].includes(status)) {
-      await validateTableCapacity({
+      validatedTable = await validateTableCapacity({
         selectedTable: nextTable,
         guests: nextGuests,
         date: nextDate,
+        selectedArea: req.body.selectedArea ?? current.selected_area,
         conn,
       });
       const isConflict = await hasTableConflict({
@@ -544,21 +653,22 @@ exports.adminUpdateBooking = async (req, res) => {
     await conn.query(
       `
       UPDATE bookings
-      SET status = ?, booking_date = ?, booking_time = ?, guests = ?, selected_area = ?, selected_area_title = ?, selected_table = ?,
+      SET status = ?, table_id = ?, booking_date = ?, booking_time = ?, guests = ?, selected_area = ?, selected_area_title = ?, selected_table = ?,
           note = ?, assigned_by = ?, assigned_at = ?, updated_at = NOW()
       WHERE id = ?
       `,
       [
         status,
+        validatedTable ? validatedTable.id : (nextTable ? current.table_id : null),
         req.body.date || current.booking_date,
         req.body.time || current.booking_time,
         nextGuests,
         req.body.selectedArea ?? current.selected_area,
-        req.body.selectedAreaTitle ?? current.selected_area_title,
-        req.body.selectedTable ?? current.selected_table,
+        req.body.selectedAreaTitle ?? (validatedTable ? validatedTable.area_name : current.selected_area_title),
+        nextTable ?? current.selected_table,
         req.body.note ?? current.note,
-        req.body.selectedTable ? req.user.name || "admin" : current.assigned_by,
-        req.body.selectedTable ? new Date() : current.assigned_at,
+        nextTable ? req.user.name || "admin" : current.assigned_by,
+        nextTable ? new Date() : current.assigned_at,
         bookingId,
       ],
     );
@@ -574,6 +684,27 @@ exports.adminUpdateBooking = async (req, res) => {
       getIO().emit("booking_updated", { id: bookingId });
     } catch (err) {
       console.error("Emit error:", err);
+    }
+
+    if (rows[0] && rows[0].email) {
+      if (status === "confirmed" || status === "cancelled") {
+        try {
+          const { sendBookingEmail } = require("../utils/mail");
+          sendBookingEmail({
+            to: rows[0].email,
+            name: rows[0].customer_name,
+            bookingCode: rows[0].booking_code,
+            status: status,
+            date: rows[0].booking_date ? new Date(rows[0].booking_date).toLocaleDateString("vi-VN") : "",
+            time: rows[0].booking_time,
+            guests: rows[0].guests,
+            note: rows[0].note || null,
+            total: Number(rows[0].total || 0)
+          }).catch(err => console.error("Lỗi gửi mail cập nhật đặt bàn:", err));
+        } catch (mailErr) {
+          console.error("Lỗi khởi tạo mail utility:", mailErr);
+        }
+      }
     }
 
     res.json({
@@ -624,6 +755,59 @@ exports.adminUpdateBookingStatus = async (req, res) => {
     }
 
     const current = currentRows[0];
+    if (current.selected_table && (status === "confirmed" || status === "serving")) {
+      const [activeRows] = await conn.query(
+        `SELECT id, cart_items, subtotal, total, total_qty FROM bookings WHERE selected_table = ? AND status = 'serving' AND deleted_at IS NULL AND id != ? LIMIT 1 FOR UPDATE`,
+        [current.selected_table, bookingId]
+      );
+      if (activeRows.length > 0) {
+        const activeBooking = activeRows[0];
+        const activeCart = parseJson(activeBooking.cart_items, []);
+        const pendingCart = parseJson(current.cart_items, []);
+
+        pendingCart.forEach(pItem => {
+          const existing = activeCart.find(aItem => String(aItem.id || aItem.code || '') === String(pItem.id || pItem.code || ''));
+          if (existing) {
+            existing.qty = Number(existing.qty || 0) + Number(pItem.qty || 0);
+          } else {
+            activeCart.push(pItem);
+          }
+        });
+
+        let newTotalQty = 0;
+        let newSubtotal = 0;
+        activeCart.forEach(item => {
+          newTotalQty += Number(item.qty || 0);
+          newSubtotal += Number(item.price || 0) * Number(item.qty || 0);
+        });
+
+        await conn.query(
+          `UPDATE bookings SET cart_items = ?, subtotal = ?, total = ?, total_qty = ?, updated_at = NOW() WHERE id = ?`,
+          [JSON.stringify(activeCart), newSubtotal, newSubtotal, newTotalQty, activeBooking.id]
+        );
+
+        await conn.query(
+          `UPDATE bookings SET status = 'completed', note = 'Đã gộp món vào hóa đơn chính', updated_at = NOW() WHERE id = ?`,
+          [bookingId]
+        );
+
+        await conn.commit();
+        try {
+          getIO().emit("table_updated", { source: "booking_merged" });
+          getIO().emit("booking_updated", { id: activeBooking.id });
+          getIO().emit("booking_updated", { id: bookingId, status: "completed" });
+        } catch (err) {
+          console.error("Emit error:", err);
+        }
+
+        return res.json({
+          success: true,
+          message: "Đã xác nhận và gộp các món gọi thêm vào bàn thành công.",
+          booking: mapBooking({ ...activeBooking, cart_items: JSON.stringify(activeCart), subtotal: newSubtotal, total: newSubtotal, total_qty: newTotalQty })
+        });
+      }
+    }
+
     if (current.selected_table && ["pending", "confirmed"].includes(status)) {
       await validateTableCapacity({
         selectedTable: current.selected_table,
@@ -662,6 +846,27 @@ exports.adminUpdateBookingStatus = async (req, res) => {
       getIO().emit("booking_updated", { id: bookingId, status });
     } catch (err) {
       console.error("Emit error:", err);
+    }
+
+    if (rows[0] && rows[0].email) {
+      if (status === "confirmed" || status === "cancelled") {
+        try {
+          const { sendBookingEmail } = require("../utils/mail");
+          sendBookingEmail({
+            to: rows[0].email,
+            name: rows[0].customer_name,
+            bookingCode: rows[0].booking_code,
+            status: status,
+            date: rows[0].booking_date ? new Date(rows[0].booking_date).toLocaleDateString("vi-VN") : "",
+            time: rows[0].booking_time,
+            guests: rows[0].guests,
+            note: rows[0].note || null,
+            total: Number(rows[0].total || 0)
+          }).catch(err => console.error("Lỗi gửi mail cập nhật trạng thái đặt bàn:", err));
+        } catch (mailErr) {
+          console.error("Lỗi khởi tạo mail utility:", mailErr);
+        }
+      }
     }
 
     res.json({

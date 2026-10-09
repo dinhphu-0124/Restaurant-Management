@@ -58,17 +58,29 @@ app.post("/api/sepay/webhook", async (req, res) => {
     console.log("=== SEPAY WEBHOOK RECEIVED ===");
     console.log(payment);
 
+    // Xác thực Webhook Security
+    const webhookApiKey = req.headers["authorization"] || req.headers["x-sepay-key"];
+    const configuredSecret = process.env.SEPAY_WEBHOOK_SECRET;
+    if (configuredSecret && webhookApiKey !== `Apikey ${configuredSecret}` && webhookApiKey !== configuredSecret) {
+      console.warn(`[Security Alert] Webhook không hợp lệ từ IP: ${req.ip}`);
+      return res.status(401).json({ success: false, message: "Unauthorized webhook signature." });
+    }
+
     const paymentContent = String(
       payment.content || payment.description || "",
     ).replace(/[^A-Z0-9]/gi, "");
 
     const transferAmount = Number(payment.transferAmount || 0);
+    if (!paymentContent || transferAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Dữ liệu webhook không hợp lệ." });
+    }
 
     const [orders] = await db.query(`
       SELECT id, order_code, payment_content, total
       FROM orders
       WHERE payment_status != 'paid'
       ORDER BY created_at DESC
+      LIMIT 100
     `);
 
     const matchedOrder = orders.find((order) => {
@@ -79,12 +91,13 @@ app.post("/api/sepay/webhook", async (req, res) => {
       return paymentContent.toLowerCase().includes(orderCode.toLowerCase());
     });
 
-    // 2. Kiểm tra các bàn đang phục vụ (bookings)
+    // 2. Kiểm tra các bàn đang phục vụ (bookings) hoặc đặt bàn chờ cọc (status = 'pending')
     const [bookings] = await db.query(`
-      SELECT id, status, payment_status
+      SELECT id, status, payment_status, total, deposit_amount, customer_name, email, booking_date, booking_time, guests, note
       FROM bookings
-      WHERE status = 'serving' AND payment_status != 'paid'
+      WHERE deleted_at IS NULL AND payment_status != 'paid'
       ORDER BY created_at DESC
+      LIMIT 100
     `);
 
     const matchedBooking = bookings.find((booking) => {
@@ -100,15 +113,12 @@ app.post("/api/sepay/webhook", async (req, res) => {
         [matchedOrder.id, transferAmount]
       );
 
-      // Tính tổng tiền đã trả
-      const [paymentRows] = await db.query(
-        `SELECT SUM(amount) as totalPaid FROM order_payments WHERE order_id = ?`,
+      const [paymentSumRows] = await db.query(
+        `SELECT COALESCE(SUM(amount), 0) AS totalPaid FROM order_payments WHERE order_id = ?`,
         [matchedOrder.id]
       );
-      
-      const totalPaid = Number(paymentRows[0].totalPaid || 0);
-      const isFullyPaid = totalPaid >= Number(matchedOrder.total || 0);
-      const nextPaymentStatus = isFullyPaid ? 'paid' : 'partial';
+      const totalPaid = Number(paymentSumRows[0]?.totalPaid || 0);
+      const nextPaymentStatus = totalPaid >= Number(matchedOrder.total || 0) ? "paid" : "partially_paid";
 
       await db.query(
         `
@@ -116,22 +126,20 @@ app.post("/api/sepay/webhook", async (req, res) => {
         SET
           payment_method = 'bank',
           payment_status = ?,
+          status = CASE WHEN ? = 'paid' THEN 'processing' ELSE status END,
           paid_at = NOW(),
           sepay_transaction = ?,
           sepay_amount = ?,
           updated_at = NOW()
         WHERE id = ?
         `,
-        [nextPaymentStatus, JSON.stringify(payment), transferAmount, matchedOrder.id],
+        [nextPaymentStatus, nextPaymentStatus, JSON.stringify(payment), transferAmount, matchedOrder.id],
       );
 
       console.log(`Đã cập nhật đơn hàng ${matchedOrder.order_code}. Trạng thái: ${nextPaymentStatus} (Đã thu: ${totalPaid}/${matchedOrder.total})`);
 
       try {
         const { getIO } = require("./src/config/socket");
-        const orderRoutes = require("./src/routes/orderRoutes"); // Cần getOrderByCode
-        // Hoặc đơn giản là lấy từ db, nhưng để dễ thì emit id
-        // Nhưng getOrderByCode không được export trực tiếp từ orderRoutes, thôi emit tạm data ngắn gọn
         getIO().emit("order_updated"); // Frontend sẽ tự load lại
       } catch (err) {
         console.error("Lỗi socket:", err);
@@ -141,6 +149,7 @@ app.post("/api/sepay/webhook", async (req, res) => {
         `
         UPDATE bookings
         SET
+          status = 'confirmed',
           payment_method = 'bank',
           payment_status = 'paid',
           paid_at = NOW()
@@ -149,7 +158,36 @@ app.post("/api/sepay/webhook", async (req, res) => {
         [matchedBooking.id],
       );
 
-      console.log("Đã cập nhật thanh toán lịch đặt bàn:", matchedBooking.id);
+      console.log("Đã cập nhật thanh toán và xác nhận lịch đặt bàn:", matchedBooking.id);
+
+      // Emit socket cập nhật
+      try {
+        const { getIO } = require("./src/config/socket");
+        getIO().emit("booking_updated", { id: matchedBooking.id, status: "confirmed" });
+        getIO().emit("table_updated", { source: "booking_confirmed" });
+      } catch (err) {
+        console.error("Lỗi socket booking:", err);
+      }
+
+      // Gửi email xác nhận cọc thành công
+      if (matchedBooking.email) {
+        try {
+          const { sendBookingEmail } = require("./src/utils/mail");
+          sendBookingEmail({
+            to: matchedBooking.email,
+            name: matchedBooking.customer_name,
+            bookingCode: `DB${String(matchedBooking.id).padStart(5, "0")}`,
+            status: "confirmed",
+            date: matchedBooking.booking_date,
+            time: matchedBooking.booking_time,
+            guests: matchedBooking.guests,
+            note: matchedBooking.note || null,
+            total: Number(matchedBooking.total || 0)
+          }).catch(err => console.error("Lỗi gửi mail đặt bàn cọc thành công:", err));
+        } catch (mailErr) {
+          console.error("Lỗi khởi tạo mail cho đặt cọc thành công:", mailErr);
+        }
+      }
     } else {
       console.log("Không tìm thấy đơn hàng hoặc lịch đặt phù hợp cho nội dung:", paymentContent);
     }
@@ -230,6 +268,30 @@ async function resetStaleTables() {
       console.log("[Auto-Reset] Không có lịch đặt quá ngày cần reset.");
     }
 
+    // 1b. Tìm tất cả lịch đặt bàn đang pending (chờ xác nhận) thuộc ngày trước hôm nay
+    const [stalePendingBookings] = await db.query(
+      `
+      SELECT b.id, b.booking_date
+      FROM bookings b
+      WHERE b.status = 'pending'
+        AND b.deleted_at IS NULL
+        AND DATE(b.booking_date) < ?
+      `,
+      [todayStr]
+    );
+
+    if (stalePendingBookings.length > 0) {
+      console.log(`[Auto-Reset] Tìm thấy ${stalePendingBookings.length} lịch đặt chờ xác nhận đã quá hạn.`);
+      const stalePendingIds = stalePendingBookings.map(b => b.id);
+      await db.query(
+        `UPDATE bookings 
+         SET status = 'cancelled', note = 'Hệ thống tự động hủy do quá hạn đặt bàn', updated_at = NOW() 
+         WHERE id IN (?)`,
+        [stalePendingIds]
+      );
+      console.log(`[Auto-Reset] Đã tự động hủy ${stalePendingBookings.length} lịch đặt chờ xác nhận quá hạn.`);
+    }
+
     // 4. Dọn dẹp bàn "mồ côi": đang serving nhưng không có lịch đặt active nào
     const [orphanResult] = await db.query(`
       UPDATE restaurant_tables rt
@@ -274,6 +336,56 @@ function scheduleMidnightReset() {
     setInterval(resetStaleTables, 24 * 60 * 60 * 1000);
   }, delay);
 }
+
+/**
+ * Quét các đặt bàn sắp diễn ra trong vòng 2 tiếng (120 phút) tiếp theo để gửi email nhắc nhở.
+ */
+async function checkAndSendBookingReminders() {
+  try {
+    const [upcomingBookings] = await db.query(`
+      SELECT id, booking_code, customer_name, email, booking_date, booking_time, guests, note
+      FROM bookings
+      WHERE status = 'confirmed'
+        AND is_reminded = 0
+        AND email IS NOT NULL
+        AND email != ''
+        AND deleted_at IS NULL
+        AND CONCAT(booking_date, ' ', booking_time) <= DATE_ADD(NOW(), INTERVAL 150 MINUTE)
+        AND CONCAT(booking_date, ' ', booking_time) >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+    `);
+
+    if (upcomingBookings.length > 0) {
+      console.log(`[Reminder-System] Tìm thấy ${upcomingBookings.length} lịch đặt bàn cần gửi mail nhắc nhở.`);
+      const { sendBookingReminderEmail } = require("./src/utils/mail");
+
+      for (const booking of upcomingBookings) {
+        // Atomic lock claim để chống race condition giữa các instance
+        const [claimResult] = await db.query(
+          `UPDATE bookings SET is_reminded = 1 WHERE id = ? AND is_reminded = 0`,
+          [booking.id]
+        );
+        if (claimResult.affectedRows === 0) continue;
+
+        try {
+          await sendBookingReminderEmail({
+            to: booking.email,
+            name: booking.customer_name,
+            bookingCode: booking.booking_code,
+            date: booking.booking_date,
+            time: booking.booking_time,
+            guests: booking.guests,
+            note: booking.note
+          });
+          console.log(`[Reminder-System] ✔️ Đã gửi nhắc lịch hẹn cho: ${booking.booking_code} (${booking.email})`);
+        } catch (mailErr) {
+          console.error(`[Reminder-System] ❌ Lỗi khi gửi mail nhắc nhở cho ${booking.booking_code}:`, mailErr);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Reminder-System] Lỗi hệ thống khi quét gửi nhắc nhở:", err);
+  }
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 const server = http.createServer(app);
@@ -286,6 +398,7 @@ server.listen(PORT, async () => {
   await resetStaleTables();
   // Lên lịch chạy lại mỗi đêm lúc 00:00
   scheduleMidnightReset();
+
   try {
     const [columns] = await db.query("SHOW COLUMNS FROM bookings");
     const hasPaymentMethod = columns.some(c => c.Field === "payment_method");
@@ -309,6 +422,24 @@ server.listen(PORT, async () => {
       `);
       console.log("Coupon migration successful!");
     }
+    const hasIsReminded = columns.some(c => c.Field === "is_reminded");
+    if (!hasIsReminded) {
+      console.log("Migrating bookings table: adding is_reminded column...");
+      await db.query(`
+        ALTER TABLE bookings
+        ADD COLUMN is_reminded TINYINT(1) DEFAULT 0 AFTER discount_amount
+      `);
+      console.log("is_reminded migration successful!");
+    }
+    const hasDepositAmount = columns.some(c => c.Field === "deposit_amount");
+    if (!hasDepositAmount) {
+      console.log("Migrating bookings table: adding deposit_amount column...");
+      await db.query(`
+        ALTER TABLE bookings
+        ADD COLUMN deposit_amount DECIMAL(15, 2) DEFAULT 0.00 AFTER is_reminded
+      `);
+      console.log("deposit_amount migration successful!");
+    }
     const statusCol = columns.find(c => c.Field === "status");
     const hasServingStatus = statusCol && statusCol.Type.includes("'serving'");
     if (!hasServingStatus) {
@@ -319,6 +450,23 @@ server.listen(PORT, async () => {
       `);
       console.log("Status enum migration successful!");
     }
+
+    // Migration cho bảng restaurant_tables để thêm pin_code
+    const [tableColumns] = await db.query("SHOW COLUMNS FROM restaurant_tables");
+    const hasPinCode = tableColumns.some(c => c.Field === "pin_code");
+    if (!hasPinCode) {
+      console.log("Migrating restaurant_tables table: adding pin_code column...");
+      await db.query(`
+        ALTER TABLE restaurant_tables
+        ADD COLUMN pin_code VARCHAR(4) DEFAULT NULL AFTER status
+      `);
+      console.log("pin_code migration successful!");
+    }
+
+    // Bắt đầu chạy quét lịch hẹn nhắc nhở định kỳ mỗi 15 phút
+    setInterval(checkAndSendBookingReminders, 15 * 60 * 1000);
+    // Chạy thử luôn lần đầu tiên
+    await checkAndSendBookingReminders();
   } catch (err) {
     console.error("Database migration error:", err);
   }

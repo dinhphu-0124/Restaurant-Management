@@ -66,7 +66,7 @@ export function SelectBox({ label, value, onChange, children }) {
   );
 }
 
-export function IconButton({ icon, color, onClick }) {
+export function IconButton({ icon, color, onClick, disabled = false, title = "" }) {
   const colors = {
     green: "bg-green-50 text-green-700 hover:bg-green-100",
     emerald: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
@@ -79,7 +79,11 @@ export function IconButton({ icon, color, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-8 h-8 rounded-lg flex items-center justify-center hover:scale-105 transition-all ${colors[color]}`}
+      disabled={disabled}
+      title={title}
+      className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+        disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" : `${colors[color]} hover:scale-105`
+      }`}
     >
       {icon}
     </button>
@@ -155,18 +159,24 @@ export function UserDetailPanel({
   const bookings = user.bookings || [];
 
   return (
-    <aside className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden xl:sticky xl:top-4 text-left">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-xl font-black text-green-955">
-          Thông tin chi tiết
-        </h3>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-red-500 text-lg"
-        >
-          ✕
-        </button>
-      </div>
+    <>
+      {/* Mobile Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 xl:hidden"
+        onClick={onClose}
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-2xl overflow-y-auto xl:static xl:z-auto xl:w-auto xl:max-w-none xl:rounded-2xl xl:border xl:border-gray-100 xl:shadow-sm xl:overflow-hidden xl:sticky xl:top-4 text-left">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-10">
+          <h3 className="text-lg sm:text-xl font-black text-green-955">
+            Thông tin chi tiết
+          </h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 flex items-center justify-center transition font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
 
       <div className="p-4 space-y-4">
         <div>
@@ -297,6 +307,7 @@ export function UserDetailPanel({
         )}
       </div>
     </aside>
+    </>
   );
 }
 

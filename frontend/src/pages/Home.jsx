@@ -3,8 +3,16 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { spaceService } from "../services/spaceService";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
-import { SpaceItem, Feature, Info, Why, Promo, Review, Service } from "../components/home/HomeComponents";
 import SpacePreviewModal from "../components/home/SpacePreviewModal";
+import {
+  SpaceItem,
+  Info,
+  Promo,
+  PromoBanner,
+  Review,
+  Service,
+  calculatePromoTimeInfo,
+} from "../components/home/HomeComponents";
 
 import goatIcon from "../assets/images/Icon_De.png";
 import hero1 from "../assets/images/Home/hero-1.png";
@@ -42,6 +50,8 @@ import phongVip3 from "../assets/images/About/phong-vip-3.png";
 import phongVip4 from "../assets/images/About/phong-vip-4.png";
 import phongVip5 from "../assets/images/About/phong-vip-5.png";
 
+import { socket } from "../utils/socket";
+
 import {
   Leaf,
   ShoppingCart,
@@ -57,25 +67,11 @@ import {
   Award,
   Truck,
   ImageIcon,
+  ArrowRight,
+  ShieldCheck,
+  Sparkles,
+  Flame,
 } from "lucide-react";
-
-const SPACE_TABS = [
-  {
-    key: "ground",
-    label: "Tầng 1",
-    images: [tangTret, tangTret1, tangTret2, tangTret3, tangTret4, tangTret5],
-  },
-  {
-    key: "floor2",
-    label: "Tầng 2",
-    images: [tangHai, tangHai1, tangHai2, tangHai3, tangHai4, tangHai5],
-  },
-  {
-    key: "vip",
-    label: "Phòng VIP",
-    images: [phongVip, phongVip1, phongVip2, phongVip3, phongVip4, phongVip5],
-  },
-];
 
 function Home() {
   const navigate = useNavigate();
@@ -92,7 +88,7 @@ function Home() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSpaceModal, setShowSpaceModal] = useState(false);
 
-  const [activeSpaceTab, setActiveSpaceTab] = useState("ground");
+  const [activeSpaceTab, setActiveSpaceTab] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(0);
 
@@ -190,13 +186,17 @@ function Home() {
     };
   }, []);
 
-  const [spaceTabsData, setSpaceTabsData] = useState(SPACE_TABS);
+  const [spaceTabsData, setSpaceTabsData] = useState([]);
 
   const fetchActiveSpaces = async () => {
     try {
       const data = await spaceService.getActiveSpaces();
-      if (data && data.length > 0) {
+      if (Array.isArray(data)) {
         setSpaceTabsData(data);
+        setActiveSpaceTab((prev) => {
+          if (prev && data.some((s) => s.key === prev)) return prev;
+          return data[0]?.key || "";
+        });
       }
     } catch (error) {
       console.error("Lỗi khi fetch active spaces:", error);
@@ -209,16 +209,23 @@ function Home() {
     const handleUpdate = () => {
       fetchActiveSpaces();
     };
+    window.addEventListener("spacesUpdated", handleUpdate);
     window.addEventListener("spaceImagesUpdated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
+    socket.on("spaces_updated", handleUpdate);
+    socket.on("areas_updated", handleUpdate);
+
     return () => {
+      window.removeEventListener("spacesUpdated", handleUpdate);
       window.removeEventListener("spaceImagesUpdated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
+      socket.off("spaces_updated", handleUpdate);
+      socket.off("areas_updated", handleUpdate);
     };
   }, []);
 
   const activeSpace =
-    spaceTabsData.find((item) => item.key === activeSpaceTab) || spaceTabsData[0] || SPACE_TABS[0];
+    spaceTabsData.find((item) => item.key === activeSpaceTab) || spaceTabsData[0] || null;
 
   const getImgUrl = (img) => {
     if (!img) return "";
@@ -271,30 +278,53 @@ function Home() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [previewImage, previewIndex, activeSpace, showSpaceModal]);
-  const [dishes, setDishes] = useState([]);
+  const fallbackDishes = [
+    { id: "fb-1", name: "Dê Nướng Tảng", price: 280000, image: deNuongTang, badge: "Đặc sản" },
+    { id: "fb-2", name: "Lẩu Dê Hương Sơn", price: 350000, image: lauDe, badge: "Đặc sản" },
+    { id: "fb-3", name: "Dê Xào Lăn", price: 220000, image: deXaoLan, badge: "Đặc sản" },
+    { id: "fb-4", name: "Dê Hấp Tía Tô", price: 240000, image: deHapTiaTo, badge: "Đặc sản" },
+  ];
+
+  const [dishes, setDishes] = useState(fallbackDishes);
 
   useEffect(() => {
     const fetchDishes = async () => {
       try {
         const res = await fetch("http://localhost:5001/api/menu-items");
         const result = await res.json();
-        if (result.success) {
-          // Lấy các món ăn bán chạy, đặc sản hoặc món mới làm nổi bật
-          const featured = result.data.filter(
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+          // CHỈ lấy những món được gán tab/badge là "Đặc sản"
+          const specialtyDishes = result.data.filter(
             (d) =>
-              d.badge === "Bán chạy" ||
-              d.badge === "Đặc sản" ||
-              d.badge === "Món mới" ||
-              d.badge === "Món ăn tâm huyết"
-          ).slice(0, 12);
-          
-          setDishes(featured.length > 0 ? featured : result.data.slice(0, 12));
+              (d.badge && d.badge.trim().toLowerCase() === "đặc sản") ||
+              (d.tag && d.tag.trim().toLowerCase() === "đặc sản")
+          );
+
+          if (specialtyDishes.length > 0) {
+            setDishes(specialtyDishes);
+          } else {
+            setDishes(fallbackDishes);
+          }
+        } else {
+          setDishes(fallbackDishes);
         }
       } catch (err) {
         console.error("Lỗi lấy danh sách món ăn trang chủ:", err);
+        setDishes(fallbackDishes);
       }
     };
     fetchDishes();
+
+    const handleMenuUpdate = () => {
+      fetchDishes();
+    };
+    window.addEventListener("menuUpdated", handleMenuUpdate);
+    window.addEventListener("storage", handleMenuUpdate);
+
+    return () => {
+      window.removeEventListener("menuUpdated", handleMenuUpdate);
+      window.removeEventListener("storage", handleMenuUpdate);
+    };
   }, []);
 
   //danh sách món
@@ -307,22 +337,37 @@ function Home() {
   );
 
   // khuyến mãi
+  const [promoTab, setPromoTab] = useState("all"); // "all" | "ongoing" | "upcoming"
   const [promos, setPromos] = useState([
     {
-      id: "birthday25",
-      title: "Combo gia đình",
+      id: "xmas25",
+      title: "Giáng sinh ấm áp",
       discount: "-25%",
-      price: "Đặt ngay",
+      tag: "Giáng sinh",
       image: comboCardImg,
-      desc: "Ưu đãi đặc biệt dành cho khách đi theo nhóm gia đình.",
+      desc: "Mừng lễ Giáng Sinh, ưu đãi đặc biệt cho thực khách.",
+      startDate: "2026-12-15",
+      endDate: "2026-12-27",
     },
     {
-      id: "online10",
-      title: "Giảm giá đặt online",
-      discount: "-10%",
-      price: "Đặt ngay",
+      id: "online15",
+      title: "Ưu đãi đặt bàn",
+      discount: "-15%",
+      tag: "",
       image: onlineCardImg,
-      desc: "Ưu đãi khi đặt món online qua website.",
+      desc: "Đặt bàn trước qua website, nhận ngay ưu đãi đặc biệt.",
+      startDate: "2026-10-01",
+      endDate: "2026-10-31",
+    },
+    {
+      id: "family20",
+      title: "Combo gia đình ấm cúng",
+      discount: "-20%",
+      tag: "Combo",
+      image: comboCardImg,
+      desc: "Thưởng thức trọn vẹn đặc sản dê nướng và lẩu dê cùng người thân.",
+      startDate: "2026-10-05",
+      endDate: "2026-11-20",
     },
   ]);
 
@@ -334,14 +379,25 @@ function Home() {
         if (result.success && Array.isArray(result.deals)) {
           const activeDeals = result.deals
             .filter((d) => d.status === "active")
-            .slice(0, 2)
+            .slice(0, 10)
             .map((d) => ({
               id: d.slug || d.code || String(d.id),
               title: d.name,
-              discount: `-${d.discount}`,
-              price: "Xem chi tiết",
-              image: d.card_image || d.detail_image || (d.type === "Sinh nhật" ? comboCardImg : onlineCardImg),
-              desc: d.subtitle || d.description,
+              discount: d.discount
+                ? String(d.discount).startsWith("-")
+                  ? d.discount
+                  : `-${d.discount}`
+                : "-20%",
+              tag: d.tag || (d.type === "Giáng sinh" ? "Giáng sinh" : (d.type === "Combo" ? "Combo" : "")),
+              image:
+                d.card_image ||
+                d.detail_image ||
+                d.cardImage ||
+                d.detailImage ||
+                (d.type === "Sinh nhật" ? comboCardImg : onlineCardImg),
+              desc: d.subtitle || d.description || d.desc || "",
+              startDate: d.startDate || d.start_date,
+              endDate: d.endDate || d.end_date,
             }));
           if (activeDeals.length > 0) {
             setPromos(activeDeals);
@@ -354,39 +410,11 @@ function Home() {
     fetchPromos();
   }, []);
 
-  const reasons = [
-    {
-      icon: (
-        <img
-          src={goatIcon}
-          alt="Dê Hương Sơn"
-          className="w-7 h-7 object-contain"
-        />
-      ),
-      title: "Thịt dê tươi mỗi ngày",
-      text: "Đảm bảo độ tươi ngon, không đông lạnh",
-    },
-    {
-      icon: <ChefHat />,
-      title: "Đầu bếp giàu kinh nghiệm",
-      text: "Nhiều năm kinh nghiệm chế biến chuẩn vị",
-    },
-    {
-      icon: <Clock />,
-      title: "Phục vụ nhanh chóng",
-      text: "Quy trình chuyên nghiệp, tiết kiệm thời gian",
-    },
-    {
-      icon: <Award />,
-      title: "Giá cả hợp lý",
-      text: "Chất lượng xứng đáng với giá tiền",
-    },
-    {
-      icon: <Users />,
-      title: "Khách hàng là ưu tiên",
-      text: "Tận tâm phục vụ, trải nghiệm hài lòng",
-    },
-  ];
+  const filteredPromos = promos.filter((p) => {
+    if (promoTab === "all") return true;
+    const timeInfo = calculatePromoTimeInfo(p.startDate, p.endDate);
+    return timeInfo.status === promoTab;
+  });
 
   return (
     <div className="min-h-screen bg-[#fbf7ec] text-green-950">
@@ -433,175 +461,139 @@ function Home() {
         </div>
       )}
 
-      {/* HERO */}
-      <section className="relative h-screen overflow-hidden">
+      {/* HERO SECTION */}
+      <section className="relative w-full aspect-[16/9] overflow-hidden bg-[#fbf7ec] select-none">
         {/* BACKGROUND SLIDER */}
         {heroImages.map((image, index) => (
           <img
             key={image}
             src={image}
             alt="Dê Hương Sơn"
-            className={`absolute inset-0 w-full h-full object-cover object-center transition-all duration-[2500ms] ease-in-out ${index === currentHero
-              ? "opacity-100 scale-105"
-              : "opacity-0 scale-100"
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-[2000ms] ease-in-out ${index === currentHero
+                ? "opacity-100 scale-100"
+                : "opacity-0 scale-100"
               }`}
           />
         ))}
 
         {/* OVERLAY SÁNG NHẸ */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#fbf7ec]/35"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#fbf7ec]/15 via-transparent to-[#fbf7ec]/25 pointer-events-none"></div>
 
-        {/* LỚP MỜ NHẸ Ở NỬA BÊN TRÁI */}
-        <div className="absolute left-[4%] top-[48%] -translate-y-1/2 w-[48%] h-[78%] rounded-full bg-white/75 blur-3xl"></div>
-        <div className="relative max-w-7xl mx-auto px-5 pt-36 md:pt-48 pb-24 md:pb-36">
-          <div className="w-full lg:w-1/2 flex justify-center">
-            <div className="text-center max-w-2xl">
-              <p
-                className="text-5xl md:text-8xl text-green-800 mb-0 leading-none drop-shadow-sm"
-                style={{ fontFamily: "'Great Vibes', cursive" }}
-              >
-                Đặc sản
-              </p>
+        {/* LỚP CHUYỂN MÀU MỀM MẠI Ở CHÂN ĐÁY BANNER (GỌN GÀNG, KHÔNG CHE NÚT) */}
+        <div
+          className="absolute -bottom-1 left-0 right-0 h-[22%] pointer-events-none z-20"
+          style={{
+            background:
+              "linear-gradient(to top, #fbf7ec 0%, #fbf7ec 15%, rgba(251, 247, 236, 0.75) 50%, rgba(251, 247, 236, 0.2) 80%, transparent 100%)",
+          }}
+        ></div>
+        {/* PHỦ KÍN MÉP RÃNH SUB-PIXEL */}
+        <div className="absolute -bottom-[2px] left-0 right-0 h-[3px] bg-[#fbf7ec] pointer-events-none z-20"></div>
 
-              <h2 className="text-4xl md:text-7xl font-black text-green-900 uppercase leading-tight">
-                Dê Hương Sơn
-              </h2>
+        {/* KHỐI NỘI DUNG NẰM CHÍNH GIỮA NỬA BÊN TRÁI VỚI CỠ CHỮ CO GIÃN TỰ ĐỘNG THEO MÀN HÌNH */}
+        <div className="absolute left-0 top-0 bottom-0 w-[54%] sm:w-[50%] lg:w-[48%] flex items-center justify-center pl-2 sm:pl-6 lg:pl-12 pr-1 sm:pr-4 z-10">
+          {/* Lớp tỏa sáng mềm mại tự nhiên trực tiếp sau chữ (không tạo viền/hình chữ nhật) */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[75%] rounded-full bg-white/45 lg:bg-white/55 blur-xl sm:blur-2xl lg:blur-3xl pointer-events-none"></div>
 
-              <h3 className="text-2xl md:text-4xl font-bold text-green-800 tracking-[0.25em] mt-2">
-                Hà Tĩnh
-              </h3>
+          {/* Nội dung chữ co giãn mượt mà theo mọi kích thước màn hình */}
+          <div className="relative z-10 text-center max-w-full w-full">
+            <p
+              className="text-2xl sm:text-4xl md:text-5xl lg:text-7xl xl:text-8xl text-[#15803d] mb-0 leading-none drop-shadow-xs sm:drop-shadow-sm"
+              style={{ fontFamily: "'Great Vibes', cursive" }}
+            >
+              Đặc sản
+            </p>
 
-              <div className="flex items-center justify-center gap-4 my-5">
-                <div className="w-28 h-px bg-green-700"></div>
-                <img
-                  src={goatIcon}
-                  alt="Dê Hương Sơn"
-                  className="w-10 h-10 object-contain"
-                />
-                <div className="w-28 h-px bg-green-700"></div>
-              </div>
+            <h2 className="text-sm sm:text-2xl md:text-3xl lg:text-5xl xl:text-6xl font-black text-[#145c30] uppercase leading-tight mt-0.5 sm:mt-1 drop-shadow-2xs">
+              Dê Hương Sơn
+            </h2>
 
-              <p className="text-sm md:text-base text-gray-700 max-w-md mx-auto mb-7 leading-relaxed px-2">
-                Thưởng thức hương vị dê núi Hương Sơn
-                <br /> đậm đà bản sắc – tươi ngon, bổ dưỡng.
-              </p>
+            <h3 className="text-[10.5px] sm:text-sm md:text-lg lg:text-2xl xl:text-3xl font-bold text-[#145c30] tracking-[0.1em] sm:tracking-[0.2em] lg:tracking-[0.25em] mt-0.5">
+              Hà Tĩnh
+            </h3>
 
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-                <button
-                  onClick={() => navigate("/about")}
-                  className="bg-primary text-white px-6 md:px-8 py-3 rounded-full font-semibold shadow-md transition-all duration-300 hover:bg-primary-light hover:-translate-y-1 hover:shadow-xl"
-                >
-                  <Leaf className="w-5 h-5 inline mr-2" />
-                  Khám phá ngay
-                </button>
-
-                <div className="booking-wrapper">
-                  <button
-                    onClick={() => navigate("/booking")}
-                    className="bg-secondary hover:bg-secondary-light text-white px-6 md:px-8 py-3 rounded-full font-bold shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                  >
-                    <CalendarDays className="w-5 h-5 inline mr-2" />
-                    Đặt bàn ngay
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURES */}
-      <section className="max-w-6xl mx-auto px-5 -mt-16 md:-mt-24 relative z-10">
-        <div className="bg-white rounded-3xl shadow-xl grid grid-cols-2 lg:grid-cols-4 overflow-hidden">
-          <Feature
-            icon={<Mountain />}
-            title="Nguồn gốc rõ ràng"
-            text="Dê núi Hương Sơn thả tự nhiên"
-          />
-          <Feature
-            icon={
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 lg:gap-4 my-1 sm:my-2 lg:my-3.5">
+              <div className="w-5 sm:w-12 md:w-18 lg:w-24 h-px bg-green-700/80"></div>
               <img
                 src={goatIcon}
                 alt="Dê Hương Sơn"
-                className="w-7 h-7 object-contain"
+                className="w-4 h-4 sm:w-5 sm:h-5 md:w-8 md:h-8 lg:w-10 lg:h-10 object-contain"
               />
-            }
-            title="Nguyên liệu tươi"
-            text="Tuyển chọn mỗi ngày, đảm bảo chất lượng"
-          />
-          <Feature
-            icon={<CookingPot />}
-            title="Chế biến truyền thống"
-            text="Công thức gia truyền, chuẩn vị đặc trưng"
-          />
-          <Feature
-            icon={<Heart />}
-            title="An toàn vệ sinh"
-            text="Đảm bảo vệ sinh, an tâm thưởng thức"
-          />
-        </div>
-      </section>
-      {/* DISHES */}
-      <section className="max-w-7xl mx-auto px-5 py-16">
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-8">
-          <div>
-            <p
-              className="text-3xl md:text-4xl text-[#c99a45] leading-none mb-1"
-              style={{ fontFamily: "'Great Vibes', cursive" }}
-            >
-              Món ngon
+              <div className="w-5 sm:w-12 md:w-18 lg:w-24 h-px bg-green-700/80"></div>
+            </div>
+
+            <p className="text-[9.5px] sm:text-xs md:text-sm lg:text-base text-gray-800 max-w-xs md:max-w-md mx-auto mb-1.5 sm:mb-2.5 lg:mb-5 leading-tight sm:leading-relaxed font-medium px-0.5">
+              Thưởng thức hương vị dê núi Hương Sơn
+              <br />
+              đậm đà bản sắc – tươi ngon, bổ dưỡng.
             </p>
 
-            <h2 className="text-2xl md:text-4xl font-black uppercase text-green-700">
+            <div className="flex flex-row items-center justify-center gap-1.5 sm:gap-2 lg:gap-3.5 mt-1 sm:mt-2 lg:mt-3">
+              <button
+                onClick={() => navigate("/about")}
+                className="bg-emerald-800 hover:bg-emerald-700 text-white px-3 sm:px-4 md:px-6 lg:px-7 py-1 sm:py-1.5 md:py-2 lg:py-2.5 rounded-full font-bold text-[9px] sm:text-xs md:text-sm lg:text-base shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-1 sm:gap-1.5 shrink-0"
+              >
+                <Leaf className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-5 lg:h-5 inline" />
+                <span>Khám phá ngay</span>
+              </button>
+
+              <div className="booking-wrapper shrink-0">
+                <button
+                  onClick={() => navigate("/booking")}
+                  className="bg-[#c99a45] hover:bg-[#b0802c] text-white px-3 sm:px-4 md:px-6 lg:px-7 py-1 sm:py-1.5 md:py-2 lg:py-2.5 rounded-full font-bold text-[9px] sm:text-xs md:text-sm lg:text-base shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-1 sm:gap-1.5 shrink-0"
+                >
+                  <CalendarDays className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-5 lg:h-5 inline" />
+                  <span>Đặt bàn ngay</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* DISHES */}
+      <section className="max-w-7xl mx-auto px-3.5 sm:px-5 pt-4 sm:pt-8 md:pt-12 pb-6 sm:pb-12 lg:pb-16 relative z-20">
+        {/* HEADER */}
+        <div className="mb-4 sm:mb-8">
+          <p
+            className="text-xl sm:text-3xl md:text-4xl text-[#c99a45] leading-none mb-0.5"
+            style={{ fontFamily: "'Great Vibes', cursive" }}
+          >
+            Món ngon
+          </p>
+
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base sm:text-2xl md:text-3xl font-black uppercase text-[#145c30] tracking-tight">
               Món ngon nổi bật
             </h2>
 
-            <p className="text-sm md:text-base text-gray-600 mt-2">
-              Những món ăn được yêu thích nhất tại Dê Hương Sơn
-            </p>
+            <Link
+              to="/menu"
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full border border-emerald-800 text-emerald-800 font-bold hover:bg-emerald-800 hover:text-white transition duration-300 shadow-2xs hover:shadow-xs text-[11px] sm:text-sm md:text-base group shrink-0"
+            >
+              <span>Xem tất cả</span>
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() =>
-                  setDishSlide((prev) =>
-                    prev === 0 ? totalDishSlides - 1 : prev - 1,
-                  )
-                }
-                className="w-11 h-11 rounded-full border border-green-800 text-green-800 flex items-center justify-center text-2xl hover:bg-green-800 hover:text-white transition"
-              >
-                ‹
-              </button>
-
-              <button
-                onClick={() =>
-                  setDishSlide((prev) =>
-                    prev === totalDishSlides - 1 ? 0 : prev + 1,
-                  )
-                }
-                className="w-11 h-11 rounded-full border border-green-800 text-green-800 flex items-center justify-center text-2xl hover:bg-green-800 hover:text-white transition"
-              >
-                ›
-              </button>
-            </div>
-          </div>
+          <p className="text-[11px] sm:text-sm md:text-base text-gray-600 mt-1">
+            Những món ăn được yêu thích nhất tại Dê Hương Sơn
+          </p>
         </div>
 
         {/* LIST */}
         <div
           key={dishSlide}
-          className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 animate-[fadeIn_.35s_ease-out]"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 md:gap-6 animate-[fadeIn_.35s_ease-out]"
         >
           {visibleDishes.map((dish) => (
             <div
               key={dish.id}
-              className="dish-card bg-white rounded-2xl shadow-md overflow-hidden hover:-translate-y-1 hover:shadow-xl transition duration-300"
+              className="dish-card bg-white rounded-xl sm:rounded-2xl shadow-xs sm:shadow-md overflow-hidden hover:-translate-y-1 hover:shadow-xl transition duration-300 flex flex-col border border-stone-200/80 group"
             >
-              <div className="relative h-32 md:h-48 overflow-hidden">
+              <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
                 {(dish.tag || dish.badge) && (
-                  <span className="absolute top-3 left-3 z-10 bg-green-800 text-white text-xs px-3 py-1 rounded-full uppercase">
+                  <span className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 bg-emerald-800/95 backdrop-blur-xs text-white text-[9px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase shadow-xs">
                     {dish.tag || dish.badge}
                   </span>
                 )}
@@ -609,82 +601,58 @@ function Home() {
                 <img
                   src={dish.image}
                   alt={dish.name}
-                  className="w-full h-full object-cover hover:scale-105 transition duration-500"
+                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                 />
               </div>
 
-              <div className="p-3 md:p-4">
-                <h3 className="font-black text-green-950 mb-1 text-sm md:text-lg line-clamp-1">
-                  {dish.name}
-                </h3>
+              <div className="p-2.5 sm:p-4 flex flex-col flex-1 justify-between gap-2">
+                <div>
+                  <h3
+                    className="font-bold text-gray-900 text-xs sm:text-base md:text-lg line-clamp-1 group-hover:text-emerald-800 transition-colors"
+                    title={dish.name}
+                  >
+                    {dish.name}
+                  </h3>
 
-                <p className="text-green-800 font-black mb-3 md:mb-5 text-base md:text-xl">
-                  {dish.price}
-                </p>
+                  <p className="text-emerald-800 font-black mt-0.5 text-xs sm:text-base md:text-xl">
+                    {typeof dish.price === "number" ? `${dish.price.toLocaleString("vi-VN")}đ` : dish.price}
+                  </p>
+                </div>
 
                 <button
                   onClick={() => addToCart(dish)}
-                  className="w-full bg-primary/10 text-primary rounded-xl py-2.5 text-sm md:text-base font-bold hover:bg-primary hover:text-white transition-all shadow-sm active:scale-95"
+                  className="w-full bg-emerald-50 text-emerald-800 rounded-lg sm:rounded-xl py-1.5 sm:py-2.5 text-[11px] sm:text-sm md:text-base font-bold hover:bg-emerald-700 hover:text-white transition-all shadow-2xs active:scale-95 flex items-center justify-center gap-1 sm:gap-2 border border-emerald-100 hover:border-emerald-700"
                 >
-                  <ShoppingCart className="w-4 h-4 inline mr-2" />
-                  Đặt món
+                  <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span>Đặt món</span>
                 </button>
               </div>
             </div>
           ))}
         </div>
 
-        {/* MOBILE ARROWS */}
-        <div className="md:hidden flex justify-center gap-3 mt-6">
-          <button
-            onClick={() =>
-              setDishSlide((prev) =>
-                prev === 0 ? totalDishSlides - 1 : prev - 1,
-              )
-            }
-            className="w-10 h-10 rounded-full border border-green-800 text-green-800 flex items-center justify-center text-2xl"
-          >
-            ‹
-          </button>
-
-          <button
-            onClick={() =>
-              setDishSlide((prev) =>
-                prev === totalDishSlides - 1 ? 0 : prev + 1,
-              )
-            }
-            className="w-10 h-10 rounded-full border border-green-800 text-green-800 flex items-center justify-center text-2xl"
-          >
-            ›
-          </button>
-        </div>
-
-        {/* DOTS */}
-        <div className="flex justify-center gap-2 mt-5">
-          {Array.from({ length: totalDishSlides }).map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setDishSlide(index)}
-              className={`h-2 rounded-full transition-all duration-300 ${dishSlide === index
-                ? "w-8 bg-green-800"
-                : "w-2 bg-gray-300 hover:bg-green-300"
-                }`}
-            />
-          ))}
-        </div>
-        <div className="flex justify-end mt-6">
-          <Link
-            to="/menu"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-green-800 text-green-800 font-bold hover:bg-green-800 hover:text-white transition"
-          >
-            Xem tất cả thực đơn →
-          </Link>
-        </div>
+        {/* SLIDE INDICATOR DOTS */}
+        {totalDishSlides > 1 && (
+          <div className="flex justify-center gap-2 mt-5 sm:mt-6">
+            {Array.from({ length: totalDishSlides }).map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setDishSlide(index)}
+                aria-label={`Slide ${index + 1}`}
+                className={`h-2 rounded-full transition-all duration-300 ${dishSlide === index
+                    ? "w-7 sm:w-8 bg-emerald-800"
+                    : "w-2 bg-gray-300 hover:bg-emerald-300"
+                  }`}
+              />
+            ))}
+          </div>
+        )}
       </section>
+
       {/* ABOUT */}
-      <section className="max-w-7xl mx-auto px-4 md:px-5 pb-10">
-        <div className="grid lg:grid-cols-2 gap-8 items-stretch">
-          <div className="min-h-[420px] rounded-3xl overflow-hidden shadow-md">
+      <section className="max-w-7xl mx-auto px-4 md:px-5 pb-10 sm:pb-14">
+        <div className="grid lg:grid-cols-2 gap-6 md:gap-8 items-stretch">
+          <div className="h-60 sm:h-80 lg:h-auto lg:min-h-[420px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-md">
             <img
               src={homeSpace}
               alt="Không gian nhà hàng Dê Hương Sơn"
@@ -692,210 +660,248 @@ function Home() {
             />
           </div>
 
-          <div className="bg-[#fffaf0] rounded-3xl p-8 md:p-10 shadow-md">
-            <p
-              className="text-4xl md:text-6xl text-green-700 text-center mb-3 leading-none"
-              style={{ fontFamily: "'Allura', cursive" }}
-            >
-              Về chúng tôi
-            </p>
+          <div className="bg-[#fffaf0] rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-10 shadow-md border border-[#eadfcd]/60 flex flex-col justify-between">
+            <div>
+              <p
+                className="text-3xl sm:text-5xl md:text-6xl text-green-700 text-center mb-1 sm:mb-2 leading-none"
+                style={{ fontFamily: "'Allura', cursive" }}
+              >
+                Về chúng tôi
+              </p>
 
-            <h2 className="text-4xl font-black text-green-900 text-center mt-2 mb-5 uppercase">
-              Dê Hương Sơn Hà Tĩnh
-            </h2>
+              <h2 className="text-xl sm:text-3xl md:text-4xl font-black text-[#145c30] text-center mt-1 mb-2 sm:mb-4 uppercase tracking-tight">
+                Dê Hương Sơn Hà Tĩnh
+              </h2>
 
-            <p className="text-gray-700 leading-relaxed mb-8 text-center">
-              Chúng tôi tự hào mang đến đặc sản dê núi Hương Sơn với hương vị
-              đậm đà, thơm ngon và bổ dưỡng. Từ khâu chọn nguyên liệu đến chế
-              biến, mỗi món ăn đều được chăm chút bằng cả tâm huyết.
-            </p>
+              <p className="text-xs sm:text-sm md:text-base text-gray-700 leading-relaxed mb-6 sm:mb-8 text-center max-w-xl mx-auto">
+                Chúng tôi tự hào mang đến đặc sản dê núi Hương Sơn với hương vị
+                đậm đà, thơm ngon và bổ dưỡng. Từ khâu tuyển chọn nguyên liệu tươi sạch mỗi ngày
+                đến bí quyết chế biến gia truyền, mỗi món ăn đều được chăm chút trọn vẹn bằng cả tâm huyết.
+              </p>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-8 gap-x-4 text-center">
-              <Info icon={<Mountain />} title="Đặc sản dê núi" />
-              <Info
-                icon={
-                  <img
-                    src={goatIcon}
-                    alt="Dê Hương Sơn"
-                    className="w-7 h-7 object-contain"
-                  />
-                }
-                title="Nguyên liệu tươi"
-              />
-              <Info icon={<CookingPot />} title="Chế biến truyền thống" />
-              <Info icon={<Heart />} title="Không gian ấm cúng" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-center">
+                <Info
+                  icon={<Mountain className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />}
+                  title="Đặc sản dê núi"
+                  text="Dê thả tự nhiên"
+                />
+                <Info
+                  icon={<Leaf className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />}
+                  title="Nguyên liệu tươi"
+                  text="Tuyển chọn mỗi ngày"
+                />
+                <Info
+                  icon={<CookingPot className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />}
+                  title="Chế biến truyền thống"
+                  text="Gia truyền chuẩn vị"
+                />
+                <Info
+                  icon={<Users className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />}
+                  title="Không gian ấm cúng"
+                  text="Tận tâm phục vụ"
+                />
+              </div>
             </div>
 
-            <div className="text-center mt-8">
+            <div className="text-center mt-6 sm:mt-8">
               <Link
                 to="/about"
-                className="group inline-flex items-center justify-center bg-green-800 text-white px-5.5 py-2.5 rounded-full font-bold text-base transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                className="group inline-flex items-center justify-center bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-full font-bold text-xs sm:text-sm md:text-base transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-95 shadow-md"
               >
-                Tìm hiểu thêm về chúng tôi
-                <span className="ml-2 transition-transform duration-300 group-hover:translate-x-2">
+                <span>Tìm hiểu thêm về chúng tôi</span>
+                <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
                   →
                 </span>
               </Link>
             </div>
-          </div>
-        </div>
-      </section>
-      {/* WHY */}
-      <section className="max-w-7xl mx-auto px-5 pb-12">
-        <div className="bg-white rounded-3xl shadow-md p-5 md:p-8">
-          <h2 className="text-lg md:text-2xl font-black text-center uppercase mb-5 md:mb-8 text-green-700">
-            Vì sao chọn chúng tôi?
-          </h2>
-
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6 text-center">
-            {reasons.map((item, index) => (
-              <div
-                key={item.title}
-                className={
-                  index === reasons.length - 1
-                    ? "col-span-2 flex justify-center lg:col-span-1"
-                    : ""
-                }
-              >
-                <Why icon={item.icon} title={item.title} text={item.text} />
-              </div>
-            ))}
           </div>
         </div>
       </section>
       {/* PROMO + SPACE + REVIEWS */}
-      <section className="max-w-7xl mx-auto px-5 pb-12">
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="bg-green-900 text-white rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-black uppercase">
-                Khuyến mãi hấp dẫn
-              </h2>
-              <img
-                src={goatIcon}
-                alt="Dê Hương Sơn"
-                className="w-7 h-7 object-contain brightness-0 invert"
-              />
-            </div>
-
-            {promos.map((promo) => (
-              <Promo
-                key={promo.id}
-                {...promo}
-                onClick={() => navigate(`/deals/${promo.id}`)}
-              />
-            ))}
-
-            <div className="flex justify-center">
+      <section className="max-w-7xl mx-auto px-4 sm:px-5 pb-10 sm:pb-12">
+        <div className="grid lg:grid-cols-3 gap-5 sm:gap-6">
+          <div className="flex flex-col gap-3 sm:gap-3.5">
+            {/* Header */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <Flame className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-800 fill-emerald-800/20 shrink-0" />
+                <h2 className="text-base sm:text-lg md:text-xl font-black uppercase text-emerald-950 tracking-tight">
+                  Ưu đãi đặc biệt
+                </h2>
+              </div>
               <Link
                 to="/deals"
-                className="group inline-flex items-center justify-center bg-white text-green-800 px-4.5 py-2 rounded-full font-bold text-base transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl"
+                className="hidden lg:inline-flex text-emerald-800 hover:text-emerald-950 font-bold text-xs sm:text-sm items-center gap-1 transition shrink-0"
               >
-                Xem tất cả khuyến mãi
-                <span className="ml-2 transition-transform duration-300 group-hover:translate-x-2">
-                  →
-                </span>
+                <span>Xem tất cả</span>
+                <span className="leading-none">→</span>
               </Link>
+            </div>
+
+            {/* Filter Tabs: Tất cả | Đang diễn ra | Sắp diễn ra */}
+            <div className="flex items-center gap-1.5 sm:gap-2 px-1 overflow-x-auto no-scrollbar py-0.5">
+              <button
+                type="button"
+                onClick={() => setPromoTab("all")}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  promoTab === "all"
+                    ? "bg-[#0d6b38] text-white shadow-xs"
+                    : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => setPromoTab("ongoing")}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  promoTab === "ongoing"
+                    ? "bg-[#0d6b38] text-white shadow-xs"
+                    : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
+                }`}
+              >
+                Đang diễn ra
+              </button>
+              <button
+                type="button"
+                onClick={() => setPromoTab("upcoming")}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                  promoTab === "upcoming"
+                    ? "bg-[#0d6b38] text-white shadow-xs"
+                    : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
+                }`}
+              >
+                Sắp diễn ra
+              </button>
+            </div>
+
+            {/* Promo Cards */}
+            {filteredPromos.length === 0 ? (
+              <div className="py-8 px-4 text-center bg-white/70 rounded-2xl border border-dashed border-[#eadfcd] text-gray-500 text-xs sm:text-sm">
+                Hiện chưa có ưu đãi{" "}
+                {promoTab === "upcoming"
+                  ? "sắp diễn ra"
+                  : promoTab === "ongoing"
+                    ? "đang diễn ra"
+                    : "nào"}
+                .
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3 sm:gap-3.5">
+                {filteredPromos.slice(0, 2).map((promo) => (
+                  <Promo
+                    key={promo.id}
+                    {...promo}
+                    buttonVariant="outline"
+                    onClick={() => navigate(`/deals/${promo.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Bottom Discover Banner: Only on Mobile / Tablet */}
+            <div className="block lg:hidden mt-1">
+              <PromoBanner onClick={() => navigate("/deals")} />
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl p-6 shadow-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-black uppercase text-green-700">
-                Không gian nhà hàng
-              </h2>
-
-              <div className="flex gap-2">
-                <button className="w-8 h-8 rounded-full border border-green-900 text-green-900 hover:bg-green-900 hover:text-white transition">
-                  ‹
-                </button>
-                <button className="w-8 h-8 rounded-full border border-green-900 text-green-900 hover:bg-green-900 hover:text-white transition">
-                  ›
-                </button>
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md flex flex-col justify-between border border-[#eadfcd]/50">
+            <div>
+              <div className="flex items-center justify-between mb-4 sm:mb-5">
+                <h2 className="text-lg sm:text-xl font-black uppercase text-[#145c30]">
+                  Không gian nhà hàng
+                </h2>
               </div>
-            </div>
 
-            {(() => {
-              const groundTab = spaceTabsData.find((t) => t.key === "ground") || spaceTabsData[0];
-              const floor2Tab = spaceTabsData.find((t) => t.key === "floor2") || spaceTabsData[1] || spaceTabsData[0];
-              const vipTab = spaceTabsData.find((t) => t.key === "vip") || spaceTabsData[2] || spaceTabsData[0];
-
-              const groundCover = getImgUrl(groundTab?.images?.[0]) || tangTret;
-              const floor2Cover = getImgUrl(floor2Tab?.images?.[0]) || tangHai;
-              const vipCover = getImgUrl(vipTab?.images?.[0]) || phongVip;
-
-              return (
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => {
-                      setActiveSpaceTab(groundTab?.key || "ground");
-                      setShowSpaceModal(true);
-                    }}
-                    className="relative h-40 rounded-2xl overflow-hidden col-span-2 group"
-                  >
-                    <img
-                      src={groundCover}
-                      alt={groundTab?.label || "Khu vực tầng 1"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    />
-                    <div className="absolute inset-0 bg-black/25" />
-                    <p className="absolute bottom-4 left-4 text-white font-black">
-                      {groundTab?.label || "Khu vực tầng 1"}
-                    </p>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setActiveSpaceTab(floor2Tab?.key || "floor2");
-                      setShowSpaceModal(true);
-                    }}
-                    className="relative h-28 rounded-2xl overflow-hidden group"
-                  >
-                    <img
-                      src={floor2Cover}
-                      alt={floor2Tab?.label || "Tầng 2"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    />
-                    <div className="absolute inset-0 bg-black/25" />
-                    <p className="absolute bottom-3 left-3 text-white text-sm font-bold">
-                      {floor2Tab?.label || "Tầng 2"}
-                    </p>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setActiveSpaceTab(vipTab?.key || "vip");
-                      setShowSpaceModal(true);
-                    }}
-                    className="relative h-28 rounded-2xl overflow-hidden group"
-                  >
-                    <img
-                      src={vipCover}
-                      alt={vipTab?.label || "Phòng VIP"}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    />
-                    <div className="absolute inset-0 bg-black/25" />
-                    <p className="absolute bottom-3 left-3 text-white text-sm font-bold">
-                      {vipTab?.label || "Phòng VIP"}
-                    </p>
-                  </button>
+              {spaceTabsData.length === 0 ? (
+                <div className="py-12 text-center text-gray-400 font-medium text-sm">
+                  Đang cập nhật không gian nhà hàng...
                 </div>
-              );
-            })()}
+              ) : (
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  {/* Space 1: Large feature */}
+                  {spaceTabsData[0] && (
+                    <button
+                      onClick={() => {
+                        setActiveSpaceTab(spaceTabsData[0].key);
+                        setShowSpaceModal(true);
+                      }}
+                      className="relative h-36 sm:h-40 rounded-xl sm:rounded-2xl overflow-hidden col-span-2 group text-left"
+                    >
+                      <img
+                        src={getImgUrl(spaceTabsData[0].coverImage || spaceTabsData[0].images?.[0]) || tangTret}
+                        alt={spaceTabsData[0].label}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                      <div className="absolute bottom-3 left-4 right-4 text-white">
+                        <p className="font-black text-sm sm:text-base leading-tight">{spaceTabsData[0].label}</p>
+                        <p className="text-[11px] sm:text-xs text-white/80 line-clamp-1 mt-0.5">{spaceTabsData[0].description || "Không gian thoáng mát, ấm cúng"}</p>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Space 2 */}
+                  {spaceTabsData[1] && (
+                    <button
+                      onClick={() => {
+                        setActiveSpaceTab(spaceTabsData[1].key);
+                        setShowSpaceModal(true);
+                      }}
+                      className={`relative h-24 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden group text-left ${!spaceTabsData[2] ? "col-span-2" : ""
+                        }`}
+                    >
+                      <img
+                        src={getImgUrl(spaceTabsData[1].coverImage || spaceTabsData[1].images?.[0]) || tangHai}
+                        alt={spaceTabsData[1].label}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                      <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
+                        <p className="text-xs sm:text-sm font-black truncate">{spaceTabsData[1].label}</p>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Space 3 */}
+                  {spaceTabsData[2] && (
+                    <button
+                      onClick={() => {
+                        setActiveSpaceTab(spaceTabsData[2].key);
+                        setShowSpaceModal(true);
+                      }}
+                      className="relative h-24 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden group text-left"
+                    >
+                      <img
+                        src={getImgUrl(spaceTabsData[2].coverImage || spaceTabsData[2].images?.[0]) || phongVip}
+                        alt={spaceTabsData[2].label}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                      <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
+                        <p className="text-xs sm:text-sm font-black truncate">{spaceTabsData[2].label}</p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             <button
               onClick={() => {
-                setActiveSpaceTab("ground");
+                if (spaceTabsData.length > 0 && !activeSpaceTab) {
+                  setActiveSpaceTab(spaceTabsData[0].key);
+                }
                 setShowSpaceModal(true);
               }}
-              className="mt-5 w-full border border-green-800 text-green-800 py-2 rounded-lg font-semibold hover:bg-green-800 hover:text-white transition"
+              className="mt-4 sm:mt-5 w-full border border-green-800 text-green-800 py-2.5 rounded-xl font-bold hover:bg-green-800 hover:text-white transition text-xs sm:text-sm active:scale-95"
             >
-              Xem thêm hình ảnh
+              Xem tất cả không gian & hình ảnh →
             </button>
           </div>
 
-          <div className="bg-[#fffaf0] rounded-3xl p-6 shadow-md">
-            <h2 className="text-lg md:text-xl font-black uppercase mb-4 md:mb-5 text-green-700">
+          <div className="bg-[#fffaf0] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md border border-[#eadfcd]/50">
+            <h2 className="text-lg sm:text-xl font-black uppercase mb-3 sm:mb-5 text-[#145c30]">
               Khách hàng nói về chúng tôi
             </h2>
 
@@ -915,25 +921,25 @@ function Home() {
         </div>
       </section>
       {/* SERVICE BAR */}
-      <section className="max-w-7xl mx-auto px-5 pb-10">
-        <div className="bg-white rounded-3xl shadow-md grid sm:grid-cols-2 lg:grid-cols-4 overflow-hidden">
+      <section className="max-w-7xl mx-auto px-4 sm:px-5 pb-10">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md grid grid-cols-2 lg:grid-cols-4 overflow-hidden border border-[#eadfcd]/50">
           <Service
-            icon={<ChefHat />}
+            icon={<ChefHat className="w-5 h-5 sm:w-6 sm:h-6" />}
             title="100% dê núi Hương Sơn"
             text="Nguồn gốc rõ ràng"
           />
           <Service
-            icon={<Award />}
+            icon={<Award className="w-5 h-5 sm:w-6 sm:h-6" />}
             title="Cam kết chất lượng"
             text="Tươi ngon mỗi ngày"
           />
           <Service
-            icon={<Truck />}
+            icon={<Truck className="w-5 h-5 sm:w-6 sm:h-6" />}
             title="Giao hàng nhanh"
             text="Trong nội thành"
           />
           <Service
-            icon={<Phone />}
+            icon={<Phone className="w-5 h-5 sm:w-6 sm:h-6" />}
             title="Hotline đặt bàn"
             text="038 713 6878"
           />
