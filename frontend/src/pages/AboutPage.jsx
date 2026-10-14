@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { spaceService } from "../services/spaceService";
 import { socket } from "../utils/socket";
 import SpacePreviewModal from "../components/home/SpacePreviewModal";
+import { BACKEND_URL } from "../config/api";
 
 import {
   Leaf,
@@ -65,7 +66,7 @@ function AboutPage() {
       return url;
     }
     if (url.startsWith("/uploads/")) {
-      return `http://localhost:5001${url}`;
+      return `${BACKEND_URL}${url}`;
     }
     return url;
   };

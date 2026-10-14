@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle, XCircle } from "lucide-react";
+import { API_BASE_URL } from "../config/api";
 
 function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -24,7 +25,7 @@ function VerifyEmailPage() {
 
       try {
         const res = await fetch(
-          `http://localhost:5001/api/auth/verify-email?token=${token}`,
+          `${API_BASE_URL}/auth/verify-email?token=${token}`,
         );
 
         const data = await res.json();

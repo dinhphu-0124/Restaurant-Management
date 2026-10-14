@@ -22,6 +22,7 @@ import { bookingService } from "../../services/bookingService";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser } from "../../utils/auth";
 import { canUseAction } from "../../utils/permissions";
+import { API_BASE_URL } from "../../config/api";
 import {
   sortAreasByPriority,
   TABLE_STATUS,
@@ -222,7 +223,7 @@ function AdminTablesPage() {
   useEffect(() => {
     if (billing.activeAddItemsBooking) {
       setMenuLoading(true);
-      fetch("http://localhost:5001/api/menu-items")
+      fetch(`${API_BASE_URL}/menu-items`)
         .then((res) => res.json())
         .then((data) => { if (data.success) setMenuItems(data.data || []); })
         .catch(console.error)

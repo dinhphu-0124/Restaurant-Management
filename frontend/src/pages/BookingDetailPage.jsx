@@ -31,7 +31,9 @@ import {
   Clock,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5001";
+import { BACKEND_URL } from "../config/api";
+
+const API_URL = BACKEND_URL;
 
 const getAuthToken = () => {
   return (

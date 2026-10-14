@@ -30,7 +30,8 @@ import {
 
 import goatIcon from "../assets/images/Icon_De.png";
 import bannermenu from "../assets/images/menu/banner-menu.jpg";
-const API_URL = "http://localhost:5001/api/menu-items";
+import { API_BASE_URL } from "../config/api";
+const API_URL = `${API_BASE_URL}/menu-items`;
 
 function MenuPage() {
   const navigate = useNavigate();
@@ -106,7 +107,7 @@ function MenuPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/categories");
+      const res = await fetch(`${API_BASE_URL}/categories`);
       const result = await res.json();
       if (result.success) {
         setCategories(result.data);

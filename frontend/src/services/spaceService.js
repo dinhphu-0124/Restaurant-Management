@@ -1,6 +1,7 @@
 import { getAuthToken } from "../utils/auth";
+import { API_BASE_URL } from "../config/api";
 
-const API_URL = "http://localhost:5001/api/spaces";
+const API_URL = `${API_BASE_URL}/spaces`;
 
 const getHeaders = () => {
   const token = getAuthToken();

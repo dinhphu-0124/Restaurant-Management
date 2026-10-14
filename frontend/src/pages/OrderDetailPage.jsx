@@ -30,8 +30,9 @@ import AppButton from "../components/ui/AppButton";
 import AppEmptyState from "../components/ui/AppEmptyState";
 import AppSkeleton from "../components/ui/AppSkeleton";
 import goatIcon from "../assets/images/Icon_De.png";
+import { BACKEND_URL } from "../config/api";
 
-const API_URL = "http://localhost:5001";
+const API_URL = BACKEND_URL;
 
 const getAuthToken = () => {
   return (

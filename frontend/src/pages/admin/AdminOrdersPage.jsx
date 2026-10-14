@@ -20,8 +20,9 @@ import {
   Search, Pencil, Trash2, RotateCcw, CalendarDays,
   Store, Utensils, CreditCard, Landmark,
 } from "lucide-react";
+import { API_BASE_URL } from "../../config/api";
 
-const API_URL = "http://localhost:5001/api/orders";
+const API_URL = `${API_BASE_URL}/orders`;
 const getAuthHeaders = () => {
   const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -773,7 +774,7 @@ function AdminOrdersPage() {
             onChangeStatus={(status) => updateOrderStatus(selectedOrder.id, status)}
             onAddPayment={async (amount, method) => {
               try {
-                const res = await fetch(`http://localhost:5001/api/orders/${selectedOrder.id}/payments`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` }, body: JSON.stringify({ amount, paymentMethod: method }) });
+                const res = await fetch(`${API_URL}/${selectedOrder.id}/payments`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` }, body: JSON.stringify({ amount, paymentMethod: method }) });
                 const data = await res.json();
                 if (data.success) { showAdminToast({ title: "Thành công", description: "Đã thêm thanh toán.", type: "success" }); setSelectedOrder(data.order); loadOrders(); }
                 else showAdminToast({ title: "Lỗi", description: data.message, type: "error" });

@@ -18,6 +18,7 @@ import { getAuthToken } from "../../utils/auth";
 import { showAdminToast } from "./AdminToast";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { ICON_MAP, CATEGORY_ICON_LIST } from "../../data/menuCategories";
+import { API_BASE_URL } from "../../config/api";
 
 function AdminCategoryModal({ isOpen, onClose }) {
   const [categories, setCategories] = useState([]);
@@ -55,7 +56,7 @@ function AdminCategoryModal({ isOpen, onClose }) {
           setCategories(newCategories);
 
           const order = newChildren.map((c, i) => ({ id: c.id, display_order: i }));
-          fetch("http://localhost:5001/api/categories/reorder", {
+          fetch(`${API_BASE_URL}/categories/reorder`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
             body: JSON.stringify({ order }),
@@ -74,7 +75,7 @@ function AdminCategoryModal({ isOpen, onClose }) {
           setCategories(newCategories);
 
           const order = newCategories.map((c, i) => ({ id: c.id, display_order: i }));
-          fetch("http://localhost:5001/api/categories/reorder", {
+          fetch(`${API_BASE_URL}/categories/reorder`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
             body: JSON.stringify({ order }),
@@ -91,7 +92,7 @@ function AdminCategoryModal({ isOpen, onClose }) {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:5001/api/categories");
+      const res = await fetch(`${API_BASE_URL}/categories`);
       const result = await res.json();
       if (result.success) {
         setCategories(result.data);
@@ -119,8 +120,8 @@ function AdminCategoryModal({ isOpen, onClose }) {
       const method = editingId === "new" ? "POST" : "PUT";
       const url =
         editingId === "new"
-          ? "http://localhost:5001/api/categories"
-          : `http://localhost:5001/api/categories/${editingId}`;
+          ? `${API_BASE_URL}/categories`
+          : `${API_BASE_URL}/categories/${editingId}`;
 
       const res = await fetch(url, {
         method,
@@ -165,7 +166,7 @@ function AdminCategoryModal({ isOpen, onClose }) {
   const executeDeleteCategory = async (id) => {
     try {
       const token = getAuthToken();
-      const res = await fetch(`http://localhost:5001/api/categories/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/categories/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });

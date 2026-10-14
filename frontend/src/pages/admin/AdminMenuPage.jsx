@@ -17,6 +17,7 @@ import {
   formatDateTimeMenu, formatPriceMenu, getStatusTextMenu,
   getStatusStyleMenu, createSearchTextMenu
 } from "../../utils/menuHelpers";
+import { API_BASE_URL } from "../../config/api";
 
 function AdminMenuPage() {
   const { globalSearch, setHeaderAction } = useOutletContext();
@@ -40,7 +41,7 @@ function AdminMenuPage() {
   const [badgeFilter, setBadgeFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
-  const API_URL = "http://localhost:5001/api/admin/menu-items";
+  const API_URL = `${API_BASE_URL}/admin/menu-items`;
   const [isLoading, setIsLoading] = useState(false);
 
   // Add/Edit Food Form State
@@ -76,7 +77,7 @@ function AdminMenuPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/categories");
+      const res = await fetch(`${API_BASE_URL}/categories`);
       const result = await res.json();
       if (result.success) { setCategoriesList(result.data); setFlatCategoriesList(result.flatData); }
     } catch (error) { console.error("Lỗi:", error); }

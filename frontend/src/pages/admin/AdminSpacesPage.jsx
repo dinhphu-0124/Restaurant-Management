@@ -23,6 +23,7 @@ import { showAdminToast } from "../../components/admin/AdminToast";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser } from "../../utils/auth";
 import { canUseAction } from "../../utils/permissions";
+import { BACKEND_URL } from "../../config/api";
 import { socket } from "../../utils/socket";
 import AdminSpaceModals from "../../components/admin/AdminSpaceModals";
 
@@ -70,7 +71,7 @@ function AdminSpacesPage() {
       return url;
     }
     if (url.startsWith("/uploads/")) {
-      return `http://localhost:5001${url}`;
+      return `${BACKEND_URL}${url}`;
     }
     return url;
   };

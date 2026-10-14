@@ -1,6 +1,7 @@
 import { getAuthToken } from "../utils/auth";
+import { API_BASE_URL } from "../config/api";
 
-const API_URL = "http://localhost:5001/api/bookings";
+const API_URL = `${API_BASE_URL}/bookings`;
 
 const authHeaders = () => {
   const token = getAuthToken();

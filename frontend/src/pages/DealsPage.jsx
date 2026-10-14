@@ -14,6 +14,7 @@ import goatIcon from "../assets/images/Icon_De.png";
 import comboCardImg from "../assets/images/Deals/combo-card.png";
 import restaurantSpace from "../assets/images/Deals/restaurant-space.png";
 import goatFood from "../assets/images/Deals/goat-food.png";
+import { API_BASE_URL } from "../config/api";
 
 function DealsPage() {
   const navigate = useNavigate();
@@ -23,7 +24,7 @@ function DealsPage() {
   const [adminDeals, setAdminDeals] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:5001/api/deals")
+    fetch(`${API_BASE_URL}/deals`)
       .then((res) => res.json())
       .then((data) => {
         setAdminDeals(data.deals || []);

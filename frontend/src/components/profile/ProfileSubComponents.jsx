@@ -31,8 +31,9 @@ import {
   Plus,
 } from "lucide-react";
 import { AppBadge, AppButton, AppEmptyState, AppSkeleton } from "../ui";
+import { BACKEND_URL, API_BASE_URL } from "../../config/api";
 
-const API_URL = "http://localhost:5001";
+const API_URL = BACKEND_URL;
 
 const getAuthToken = () => {
   return (
@@ -509,7 +510,7 @@ export function OrderCard({ order }) {
     if (!reviewItem) return;
     try {
       const res = await fetch(
-        `http://localhost:5001/api/menu-items/${reviewItem.id}/reviews`,
+        `${API_BASE_URL}/menu-items/${reviewItem.id}/reviews`,
         {
           method: "POST",
           headers: {

@@ -21,7 +21,7 @@ const categoryRoutes = require("./src/routes/categoryRoutes");
 const revenueRoutes = require("./src/routes/revenueRoutes");
 
 const app = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json());

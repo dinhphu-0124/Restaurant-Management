@@ -19,8 +19,9 @@ import { bookingService } from "../services/bookingService";
 import AppBadge from "../components/ui/AppBadge";
 import AppButton from "../components/ui/AppButton";
 import { showAdminToast } from "../components/admin/AdminToast";
+import { BACKEND_URL } from "../config/api";
 
-const API_URL = "http://localhost:5001";
+const API_URL = BACKEND_URL;
 const getAuthToken = () => {
   return (
     localStorage.getItem("authToken") || sessionStorage.getItem("authToken")

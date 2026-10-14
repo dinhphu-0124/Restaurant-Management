@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { spaceService } from "../services/spaceService";
+import { BACKEND_URL, API_BASE_URL } from "../config/api";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
 import SpacePreviewModal from "../components/home/SpacePreviewModal";
@@ -235,7 +236,7 @@ function Home() {
       return url;
     }
     if (url.startsWith("/uploads/")) {
-      return `http://localhost:5001${url}`;
+      return `${BACKEND_URL}${url}`;
     }
     return url;
   };
@@ -290,7 +291,7 @@ function Home() {
   useEffect(() => {
     const fetchDishes = async () => {
       try {
-        const res = await fetch("http://localhost:5001/api/menu-items");
+        const res = await fetch(`${API_BASE_URL}/menu-items`);
         const result = await res.json();
         if (result.success && Array.isArray(result.data) && result.data.length > 0) {
           // CHỈ lấy những món được gán tab/badge là "Đặc sản"
@@ -374,7 +375,7 @@ function Home() {
   useEffect(() => {
     const fetchPromos = async () => {
       try {
-        const res = await fetch("http://localhost:5001/api/deals");
+        const res = await fetch(`${API_BASE_URL}/deals`);
         const result = await res.json();
         if (result.success && Array.isArray(result.deals)) {
           const activeDeals = result.deals

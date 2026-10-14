@@ -8,6 +8,7 @@ import {
   Utensils,
   Copy,
 } from "lucide-react";
+import { API_BASE_URL } from "../config/api";
 
 function DealDetailPage() {
   const { dealId } = useParams();
@@ -19,7 +20,7 @@ function DealDetailPage() {
   useEffect(() => {
     setLoading(true);
 
-    fetch("http://localhost:5001/api/deals")
+    fetch(`${API_BASE_URL}/deals`)
       .then((res) => res.json())
       .then((data) => {
         setAdminDeals(data.deals || []);

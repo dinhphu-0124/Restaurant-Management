@@ -1,4 +1,6 @@
-const API_URL = "http://localhost:5001/api/deals";
+import { API_BASE_URL } from "../config/api";
+
+const API_URL = `${API_BASE_URL}/deals`;
 
 const handleResponse = async (res) => {
   const data = await res.json();

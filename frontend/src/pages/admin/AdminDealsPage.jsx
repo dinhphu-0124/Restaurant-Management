@@ -21,8 +21,9 @@ import {
   getServiceTypeTextDeal,
   getStoredDealTypes,
 } from "../../utils/dealsHelpers";
+import { API_BASE_URL } from "../../config/api";
 
-const API_URL = "http://localhost:5001/api/deals";
+const API_URL = `${API_BASE_URL}/deals`;
 
 const authHeaders = (contentType = "application/json") => {
   const token = getAuthToken();
@@ -67,7 +68,7 @@ function AdminDealsPage() {
     try {
       const formData = new FormData();
       formData.append("image", file);
-      const res = await fetch("http://localhost:5001/api/deals/upload", {
+      const res = await fetch(`${API_URL}/upload`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${getAuthToken()}` },
         body: formData

@@ -3,6 +3,7 @@ import { bookingService } from "../services/bookingService";
 import { tableService } from "../services/tableService";
 import { showAdminToast } from "../components/admin/AdminToast";
 import { parsePriceNumber } from "./tableHelpers";
+import { API_BASE_URL } from "../config/api";
 
 /**
  * Custom hook quản lý logic thanh toán tại bàn:
@@ -157,7 +158,7 @@ export function useTablesBilling({ selectedTable, setSelectedTable, bookings, se
     const code = couponCodeInput.trim().toUpperCase();
     if (!code) { setAppliedCoupon(null); setCouponMsg("Vui lòng nhập mã."); return; }
     try {
-      const res = await fetch("http://localhost:5001/api/deals");
+      const res = await fetch(`${API_BASE_URL}/deals`);
       const data = await res.json();
       if (!data.success) { setCouponMsg("Không thể tải danh sách khuyến mãi."); return; }
       const deals = data.deals || [];
@@ -197,7 +198,7 @@ export function useTablesBilling({ selectedTable, setSelectedTable, bookings, se
     const billDiscount = appliedCoupon ? (appliedCoupon.discountAmount || 0) : 0;
     const billTotal = Math.max(0, billSubtotal - billDiscount);
     try {
-      const res = await fetch("http://localhost:5001/api/sepay/webhook", {
+      const res = await fetch(`${API_BASE_URL}/sepay/webhook`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

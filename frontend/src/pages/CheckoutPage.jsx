@@ -1,6 +1,7 @@
 import { checkLogin } from "../utils/auth";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BACKEND_URL, API_BASE_URL } from "../config/api";
 
 import {
   ShoppingCart,
@@ -77,7 +78,7 @@ const getFinalAreaImage = (area) => {
     return img;
   }
   if (img.startsWith("/uploads/")) {
-    return `http://localhost:5001${img}`;
+    return `${BACKEND_URL}${img}`;
   }
   return img;
 };
@@ -98,7 +99,7 @@ function CheckoutPage() {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const API_URL = "http://localhost:5001";
+  const API_URL = BACKEND_URL;
 
   const navigate = useNavigate();
   const currentUser =
@@ -169,7 +170,7 @@ function CheckoutPage() {
     if (qrTableCode) {
       const checkTableStatus = async () => {
         try {
-          const res = await fetch(`http://localhost:5001/api/tables/check/${encodeURIComponent(qrTableCode)}`);
+          const res = await fetch(`${API_BASE_URL}/tables/check/${encodeURIComponent(qrTableCode)}`);
           const data = await res.json();
           if (data.success && data.table?.isServing) {
             setIsTableServing(true);

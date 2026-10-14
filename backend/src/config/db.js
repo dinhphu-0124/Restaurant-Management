@@ -14,6 +14,7 @@ const pool = mysql.createPool({
 
   timezone: "+07:00",
   dateStrings: true,
+  ssl: process.env.DB_SSL === "true" ? { minVersion: "TLSv1.2", rejectUnauthorized: true } : undefined,
 });
 
 pool.on("connection", (connection) => {

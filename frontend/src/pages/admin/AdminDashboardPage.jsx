@@ -34,8 +34,9 @@ import {
   getBookingStatusStyle,
   getBookingStatusText,
 } from "../../utils/dashboardHelpers";
+import { API_BASE_URL } from "../../config/api";
 
-const API_URL = "http://localhost:5001/api/admin/dashboard/stats";
+const API_URL = `${API_BASE_URL}/admin/dashboard/stats`;
 
 function AdminDashboardPage() {
   const navigate = useNavigate();

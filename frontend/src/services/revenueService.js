@@ -1,6 +1,7 @@
 import { getAuthToken } from "../utils/auth";
+import { API_BASE_URL } from "../config/api";
 
-const API_URL = "http://localhost:5001/api/revenue";
+const API_URL = `${API_BASE_URL}/revenue`;
 
 const authHeaders = () => ({
   "Content-Type": "application/json",

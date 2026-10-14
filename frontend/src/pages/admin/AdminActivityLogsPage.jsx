@@ -3,6 +3,7 @@ import { getAuthToken } from "../../utils/auth";
 import { showAdminToast } from "../../components/admin/AdminToast";
 import GlobalPagination from "../../components/admin/GlobalPagination";
 import { translateAction, renderColoredMessage } from "../../utils/actionTranslator.jsx";
+import { API_BASE_URL } from "../../config/api";
 
 export default function AdminActivityLogsPage() {
   const [logs, setLogs] = useState([]);
@@ -20,7 +21,7 @@ export default function AdminActivityLogsPage() {
   async function fetchLogs() {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5001/api/activity-logs", {
+      const response = await fetch(`${API_BASE_URL}/activity-logs`, {
         headers: {
           Authorization: `Bearer ${getAuthToken()}`,
         },

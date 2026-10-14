@@ -5,6 +5,7 @@ import { tableService } from "../services/tableService";
 import { bookingService } from "../services/bookingService";
 import { spaceService } from "../services/spaceService";
 import { socket } from "../utils/socket";
+import { BACKEND_URL } from "../config/api";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
 import AppBadge from "../components/ui/AppBadge";
@@ -590,7 +591,7 @@ function BookingPage() {
       return img;
     }
     if (img.startsWith("/uploads/")) {
-      return `http://localhost:5001${img}`;
+      return `${BACKEND_URL}${img}`;
     }
     return img;
   };

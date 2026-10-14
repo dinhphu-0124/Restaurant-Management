@@ -8,6 +8,7 @@ import AppEmptyState from "../components/ui/AppEmptyState";
 import AppButton from "../components/ui/AppButton";
 import AppBadge from "../components/ui/AppBadge";
 import AppModal from "../components/ui/AppModal";
+import { API_BASE_URL } from "../config/api";
 
 import {
   ShoppingCart,
@@ -62,7 +63,7 @@ function CartPage() {
   const [allMenuItems, setAllMenuItems] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:5001/api/menu-items")
+    fetch(`${API_BASE_URL}/menu-items`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -180,7 +181,7 @@ function CartPage() {
 
   const loadCoupons = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/deals");
+      const res = await fetch(`${API_BASE_URL}/deals`);
       const data = await res.json();
       const coupons = (data.deals || []).map(convertDealToCoupon);
       setAdminCoupons(coupons);
@@ -348,7 +349,7 @@ function CartPage() {
   const fetchDishReviews = async (dishCode) => {
     try {
       setIsLoadingReviews(true);
-      const res = await fetch(`http://localhost:5001/api/menu-items/${dishCode}/reviews`);
+      const res = await fetch(`${API_BASE_URL}/menu-items/${dishCode}/reviews`);
       const result = await res.json();
       if (result.success) {
         setDishReviews(result.data || []);
