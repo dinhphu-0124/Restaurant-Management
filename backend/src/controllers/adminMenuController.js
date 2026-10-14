@@ -12,8 +12,14 @@ function parseImages(value) {
   }
 }
 
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):5001/, "");
+}
+
 function mapMenuItem(row, priceOptions = []) {
-  const images = parseImages(row.images);
+  const images = parseImages(row.images).map(normalizeImageUrl);
+  const image = normalizeImageUrl(row.image) || images[0] || DEFAULT_IMAGE;
   const options = (priceOptions || [])
     .sort((a, b) => (Number(a.display_order) - Number(b.display_order)) || (Number(a.id) - Number(b.id)))
     .map((opt) => ({
@@ -118,7 +124,7 @@ exports.uploadImages = (req, res) => {
       });
     }
     const imageUrls = req.files.map(
-      (file) => `http://localhost:5001/uploads/menu/${file.filename}`,
+      (file) => `/uploads/menu/${file.filename}`,
     );
     res.json({
       success: true,

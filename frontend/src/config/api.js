@@ -2,13 +2,15 @@ const getBackendUrl = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.replace(/\/+$/, "");
   }
-  const hostname = window.location.hostname;
-  // Nếu đang chạy local (localhost hoặc 127.0.0.1) thì giữ nguyên localhost
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return "http://localhost:5001";
+  if (typeof window !== "undefined") {
+    // Nếu đang chạy trên cổng dev Vite 5173 thì trỏ sang backend 5001
+    if (window.location.port === "5173") {
+      return `http://${window.location.hostname}:5001`;
+    }
+    // Nếu chạy cùng domain/port với server backend (production build hoặc tunnel)
+    return window.location.origin;
   }
-  // Nếu truy cập từ thiết bị khác trong mạng LAN, tự động trỏ về IP của máy chủ chạy backend
-  return `http://${hostname}:5001`;
+  return "http://localhost:5001";
 };
 
 export const BACKEND_URL = getBackendUrl();

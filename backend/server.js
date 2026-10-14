@@ -1,6 +1,7 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const http = require("http");
 const socketConfig = require("./src/config/socket");
 
@@ -44,9 +45,16 @@ app.use("/api/activity-logs", activityLogRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/revenue", revenueRoutes);
 
-app.get("/", (req, res) => {
+// Serve frontend static assets if dist exists
+const frontendDist = path.join(__dirname, "../frontend/dist");
+if (require("fs").existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+}
+
+app.get("/api/health", (req, res) => {
   res.json({
-    message: "Backend SePay is running",
+    message: "Backend is running",
+    status: "healthy",
   });
 });
 
@@ -387,6 +395,19 @@ async function checkAndSendBookingReminders() {
   }
 }
 // ────────────────────────────────────────────────────────────────────────────
+
+// SPA Fallback for React Router (Express 5 compatible)
+app.use((req, res, next) => {
+  if (req.method !== "GET") return next();
+  if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) {
+    return next();
+  }
+  const indexPath = path.join(frontendDist, "index.html");
+  if (require("fs").existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.status(404).json({ message: "Not Found" });
+});
 
 const server = http.createServer(app);
 socketConfig.init(server);

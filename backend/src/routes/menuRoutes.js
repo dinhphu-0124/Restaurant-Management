@@ -20,9 +20,14 @@ function formatPrice(value) {
   return Number(value || 0).toLocaleString("vi-VN") + "đ";
 }
 
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):5001/, "");
+}
+
 function mapPublicMenuItem(row, priceOptions = []) {
-  const images = parseImages(row.images);
-  const image = row.image || images[0] || DEFAULT_IMAGE;
+  const images = parseImages(row.images).map(normalizeImageUrl);
+  const image = normalizeImageUrl(row.image) || images[0] || DEFAULT_IMAGE;
 
   const activeOptions = (priceOptions || [])
     .filter((opt) => opt.is_active === 1 || opt.is_active === true)
