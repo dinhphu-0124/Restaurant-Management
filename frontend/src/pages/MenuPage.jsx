@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 
 import goatIcon from "../assets/images/Icon_De.png";
-import bannermenu from "../assets/images/menu/banner-menu.jpg";
+import bannermenu from "../assets/images/Menu/banner-menu.jpg";
 import { API_BASE_URL } from "../config/api";
 const API_URL = `${API_BASE_URL}/menu-items`;
 

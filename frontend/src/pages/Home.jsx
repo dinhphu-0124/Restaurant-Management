@@ -22,10 +22,10 @@ import hero3 from "../assets/images/Home/hero-3.png";
 import hero4 from "../assets/images/Home/hero-4.png";
 import homeSpace from "../assets/images/Home/home-space.png";
 
-import deNuongTang from "../assets/images/menu/de-nuong-tang.jpg";
-import lauDe from "../assets/images/menu/lau-de.jpg";
-import deXaoLan from "../assets/images/menu/de-xao-lan.jpg";
-import deHapTiaTo from "../assets/images/menu/de-hap-tia-to.jpg";
+import deNuongTang from "../assets/images/Menu/de-nuong-tang.jpg";
+import lauDe from "../assets/images/Menu/lau-de.jpg";
+import deXaoLan from "../assets/images/Menu/de-xao-lan.jpg";
+import deHapTiaTo from "../assets/images/Menu/de-hap-tia-to.jpg";
 
 import comboCardImg from "../assets/images/Deals/combo-card.png";
 import onlineCardImg from "../assets/images/Deals/online-card.png";
