@@ -1,6 +1,6 @@
 const db = require("../config/db");
 
-const DEFAULT_IMAGE = "/src/assets/images/Menu/default-food.png";
+const DEFAULT_IMAGE = "/images/default-food.png";
 
 function parseImages(value) {
   if (!value) return [];

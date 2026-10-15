@@ -532,7 +532,7 @@ function Home() {
             <div className="flex flex-row items-center justify-center gap-1.5 sm:gap-2 lg:gap-3.5 mt-1 sm:mt-2 lg:mt-3">
               <button
                 onClick={() => navigate("/about")}
-                className="bg-emerald-800 hover:bg-emerald-700 text-white px-3 sm:px-4 md:px-6 lg:px-7 py-1 sm:py-1.5 md:py-2 lg:py-2.5 rounded-full font-bold text-[9px] sm:text-xs md:text-sm lg:text-base shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-1 sm:gap-1.5 shrink-0"
+                className="hidden sm:flex bg-emerald-800 hover:bg-emerald-700 text-white px-3 sm:px-4 md:px-6 lg:px-7 py-1 sm:py-1.5 md:py-2 lg:py-2.5 rounded-full font-bold text-[9px] sm:text-xs md:text-sm lg:text-base shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 active:scale-95 items-center justify-center gap-1 sm:gap-1.5 shrink-0"
               >
                 <Leaf className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-5 lg:h-5 inline" />
                 <span>Khám phá ngay</span>

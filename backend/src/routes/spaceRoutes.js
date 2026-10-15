@@ -45,13 +45,18 @@ const uploadSpaceImages = multer({
 });
 
 // Helper to format output space data with images sorted (cover first)
+function normalizeImageUrl(url) {
+  if (!url || typeof url !== "string") return url;
+  return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):5001/, "");
+}
+
 function formatSpaces(spacesRows, imagesRows, tableStatsMap = {}) {
   return spacesRows.map((space) => {
     const spaceImages = imagesRows
       .filter((img) => img.space_id === space.id)
       .map((img) => ({
         id: String(img.id),
-        url: img.url,
+        url: normalizeImageUrl(img.url),
         title: img.title || "",
         description: img.description || "",
         isCover: img.is_cover === 1,

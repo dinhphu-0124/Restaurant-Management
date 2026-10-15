@@ -50,6 +50,8 @@ const frontendDist = path.join(__dirname, "../frontend/dist");
 if (require("fs").existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
 }
+app.use("/src", express.static(path.join(__dirname, "../frontend/src")));
+app.use("/images", express.static(path.join(__dirname, "../frontend/public/images")));
 
 app.get("/api/health", (req, res) => {
   res.json({
