@@ -54,6 +54,8 @@ async function consumeDealUsage(
   connection,
   appliedCoupon,
   couponDiscountTotal,
+  subtotal = 0,
+  serviceType = "",
 ) {
   const discountAmount = safeNumber(couponDiscountTotal);
   if (!appliedCoupon?.code || discountAmount <= 0) {
@@ -64,7 +66,7 @@ async function consumeDealUsage(
     .toUpperCase();
 
   const [dealRows] = await connection.query(
-    `SELECT id, code, status, usage_limit, used_count, total_discount, usage_history FROM deals WHERE UPPER(code) = UPPER(?) LIMIT 1 FOR UPDATE`,
+    `SELECT id, code, name, status, start_date, end_date, condition_amount, service_types, usage_limit, used_count, total_discount, usage_history FROM deals WHERE UPPER(code) = UPPER(?) LIMIT 1 FOR UPDATE`,
     [couponCode],
   );
 
@@ -72,13 +74,87 @@ async function consumeDealUsage(
     return { success: false, status: 404, message: "Mã ưu đãi không tồn tại." };
   }
   const deal = dealRows[0];
-  if (deal.status !== "active") {
+  if (deal.status === "paused") {
     return {
       success: false,
       status: 400,
-      message: "Mã ưu đãi hiện không còn hiệu lực.",
+      message: `Chương trình ưu đãi "${deal.name}" hiện đang tạm dừng.`,
     };
   }
+  if (deal.status === "cancelled") {
+    return {
+      success: false,
+      status: 400,
+      message: `Chương trình ưu đãi "${deal.name}" đã bị hủy.`,
+    };
+  }
+
+  // Real-time Date Boundaries according to Asia/Ho_Chi_Minh (UTC+7)
+  const now = new Date();
+  const startDateStr = deal.start_date ? String(deal.start_date).slice(0, 10) : "";
+  const endDateStr = deal.end_date ? String(deal.end_date).slice(0, 10) : "";
+
+  if (!startDateStr || !endDateStr) {
+    return {
+      success: false,
+      status: 400,
+      message: "Khuyến mãi có dữ liệu ngày không hợp lệ.",
+    };
+  }
+
+  const start = new Date(`${startDateStr}T00:00:00+07:00`);
+  const end = new Date(`${endDateStr}T23:59:59.999+07:00`);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return {
+      success: false,
+      status: 400,
+      message: "Khuyến mãi có dữ liệu thời gian không hợp lệ.",
+    };
+  }
+
+  if (now < start) {
+    return {
+      success: false,
+      status: 400,
+      message: `Chương trình ưu đãi "${deal.name}" chưa tới thời gian áp dụng (bắt đầu từ ${startDateStr}).`,
+    };
+  }
+
+  if (now > end) {
+    return {
+      success: false,
+      status: 400,
+      message: `Mã ưu đãi "${deal.code}" đã hết hạn sử dụng từ ngày ${endDateStr}.`,
+    };
+  }
+
+  // Check minimum order condition
+  const minOrder = Number(deal.condition_amount || 0);
+  if (minOrder > 0 && subtotal !== undefined && Number(subtotal) < minOrder) {
+    return {
+      success: false,
+      status: 400,
+      message: `Đơn hàng tối thiểu ${minOrder.toLocaleString("vi-VN")}đ để áp dụng mã "${deal.code}".`,
+    };
+  }
+
+  // Check service type if specified
+  if (serviceType && deal.service_types) {
+    try {
+      const allowedTypes = typeof deal.service_types === "string" ? JSON.parse(deal.service_types) : deal.service_types;
+      if (Array.isArray(allowedTypes) && allowedTypes.length > 0 && !allowedTypes.includes(serviceType)) {
+        return {
+          success: false,
+          status: 400,
+          message: `Mã ưu đãi "${deal.code}" không áp dụng cho hình thức đặt hàng này.`,
+        };
+      }
+    } catch {
+      // ignore json parse error
+    }
+  }
+
   const usageLimit = Number(deal.usage_limit || 0);
   const usedCount = Number(deal.used_count || 0);
   if (usageLimit > 0 && usedCount >= usageLimit) {
@@ -389,6 +465,8 @@ exports.createOrder = async (req, res) => {
       connection,
       appliedCoupon,
       couponDiscountTotal,
+      safeNumber(body.subtotal),
+      body.serviceType || body.orderType || "delivery",
     );
     if (!dealUsageResult.success) {
       await connection.rollback();

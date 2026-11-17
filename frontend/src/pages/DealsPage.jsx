@@ -1,27 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { Sparkles, Gift, Clock, CalendarDays, Utensils } from "lucide-react";
+import SEO from "../components/common/SEO";
 
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Navigation, Pagination, Autoplay } from "swiper/modules";
-
-import "swiper/css";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
-
-import { Gift, CalendarDays, Star, CheckCircle, Utensils } from "lucide-react";
-
-import goatIcon from "../assets/images/Icon_De.png";
+import heroIllustration from "../assets/images/Deals/deals-hero-illustration.png";
+import cardMeatDish from "../assets/images/Deals/card-meat-dish.png";
 import comboCardImg from "../assets/images/Deals/combo-card.png";
-import restaurantSpace from "../assets/images/Deals/restaurant-space.png";
-import goatFood from "../assets/images/Deals/goat-food.png";
+import bookingCardImg from "../assets/images/Deals/booking-card.png";
+import birthdayCardImg from "../assets/images/Deals/birthday-card.png";
+import onlineCardImg from "../assets/images/Deals/online-card.png";
+import ctaLeaves from "../assets/images/Deals/cta-leaves.png";
 import { API_BASE_URL } from "../config/api";
+import { getDealLifecycle } from "../utils/dealsHelpers";
 
 function DealsPage() {
   const navigate = useNavigate();
-
-  const [currentBanner, setCurrentBanner] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(true);
   const [adminDeals, setAdminDeals] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/deals`)
@@ -39,577 +34,437 @@ function DealsPage() {
     return `/deals/${deal.slug || deal.code || deal.id}`;
   };
 
-  const getDealConditions = (deal) => {
-    const serviceTypes = Array.isArray(deal.serviceTypes)
-      ? deal.serviceTypes
-      : [];
-
-    const serviceConditionItems = deal.serviceConditionItems || {};
-
-    const serviceConditions = serviceTypes.flatMap(
-      (type) => serviceConditionItems[type] || [],
+  const isDealExpired = (deal) => {
+    const lifecycle = getDealLifecycle(deal);
+    return (
+      lifecycle.key === "expired" ||
+      lifecycle.key === "invalid" ||
+      lifecycle.key === "paused" ||
+      lifecycle.key === "cancelled"
     );
-
-    return [
-      deal.condition
-        ? `Áp dụng hóa đơn từ ${Number(deal.condition).toLocaleString(
-            "vi-VN",
-          )}đ`
-        : "",
-      ...(Array.isArray(deal.conditionItems) ? deal.conditionItems : []),
-      ...serviceConditions,
-    ].filter((item, index, array) => item && array.indexOf(item) === index);
   };
 
-  const activeAdminDeals = adminDeals.filter(
-    (deal) => deal.status === "active",
-  );
-
-  const upcomingAdminDeals = adminDeals.filter(
-    (deal) => deal.status === "upcoming",
-  );
-
-  const heroDeals = activeAdminDeals
-    .filter((deal) => deal.bannerImage || deal.detailImage || deal.cardImage)
-    .map((deal) => ({
-      id: deal.slug || deal.code || deal.id,
-      image: deal.bannerImage || deal.detailImage || deal.cardImage,
-      label: deal.subtitle || deal.type || "Khuyến mãi",
-      scriptTitle: deal.name,
-      title: String(deal.discount || "").includes("%") ? "Giảm" : "Ưu đãi",
-      discount: deal.discount || "",
-      desc: deal.desc || deal.subtitle || "Chương trình khuyến mãi hấp dẫn.",
-      conditions: getDealConditions(deal).slice(0, 4),
-    }));
-
-  const banner =
-    heroDeals.length > 0 ? heroDeals[currentBanner % heroDeals.length] : null;
-
-  useEffect(() => {
-    setCurrentBanner(0);
-  }, [heroDeals.length]);
-
-  useEffect(() => {
-    if (heroDeals.length <= 1) return;
-
-    const interval = setInterval(() => {
-      setIsAnimating(false);
-
-      setTimeout(() => {
-        setCurrentBanner((prev) => (prev + 1) % heroDeals.length);
-
-        setTimeout(() => {
-          setIsAnimating(true);
-        }, 50);
-      }, 350);
-    }, 6000);
-
-    return () => clearInterval(interval);
-  }, [heroDeals.length]);
-
-  const handlePrevBanner = () => {
-    if (heroDeals.length === 0) return;
-
-    setCurrentBanner((prev) => (prev === 0 ? heroDeals.length - 1 : prev - 1));
+  const isDealUpcoming = (deal) => {
+    const lifecycle = getDealLifecycle(deal);
+    return lifecycle.key === "upcoming";
   };
 
-  const handleNextBanner = () => {
-    if (heroDeals.length === 0) return;
+  const getDealCardImage = (deal) => {
+    // 1. Ưu tiên tuyệt đối ảnh do admin đã tải lên
+    if (
+      deal.cardImage &&
+      typeof deal.cardImage === "string" &&
+      deal.cardImage.trim() !== "" &&
+      !deal.cardImage.includes("undefined")
+    ) {
+      return deal.cardImage;
+    }
 
-    setCurrentBanner((prev) => (prev + 1) % heroDeals.length);
+    // 2. Fallback dự phòng chỉ dùng khi admin chưa tải ảnh lên
+    const code = (deal.code || "").toUpperCase();
+    const type = (deal.type || "").toLowerCase();
+    const name = (deal.name || "").toLowerCase();
+
+    if (type.includes("đặt bàn") || name.includes("đặt bàn")) {
+      return bookingCardImg;
+    }
+    if (type.includes("sinh nhật") || name.includes("sinh nhật")) {
+      return birthdayCardImg;
+    }
+    if (
+      type.includes("online") ||
+      type.includes("đặt món") ||
+      name.includes("online")
+    ) {
+      return onlineCardImg;
+    }
+    if (
+      code.includes("GIANGSINH") ||
+      type.includes("món") ||
+      name.includes("nướng") ||
+      name.includes("dê")
+    ) {
+      return cardMeatDish;
+    }
+    return comboCardImg;
   };
+
+  const getDealBadge = (deal) => {
+    return deal.type || "Ưu đãi";
+  };
+
+  const formatDiscount = (discount) => {
+    if (!discount) return "";
+    const str = String(discount).trim();
+    if (str.toLowerCase().startsWith("giảm")) return str;
+    return `Giảm ${str}`;
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Chỉ lấy danh sách ưu đãi thực từ Admin (loại bỏ ưu đãi đã hết hạn / qua thời gian)
+  const validDeals = useMemo(() => {
+    return adminDeals.filter((deal) => !isDealExpired(deal));
+  }, [adminDeals]);
+
+  const filterCategories = [
+    { id: "all", label: "Tất cả" },
+    { id: "upcoming", label: "Sắp diễn ra" },
+    { id: "food", label: "Giảm giá món ăn" },
+    { id: "booking", label: "Ưu đãi đặt bàn" },
+    { id: "event", label: "Sự kiện đặc biệt" },
+  ];
+
+  const matchCategory = (deal, catId) => {
+    if (catId === "all") return true;
+    if (catId === "upcoming") return isDealUpcoming(deal);
+
+    const type = (deal.type || "").toLowerCase();
+    const name = (deal.name || "").toLowerCase();
+    const code = (deal.code || "").toUpperCase();
+
+    if (catId === "booking") {
+      return (
+        type.includes("đặt bàn") ||
+        name.includes("đặt bàn") ||
+        code.includes("BOOKING")
+      );
+    }
+    if (catId === "food") {
+      return (
+        type.includes("combo") ||
+        type.includes("món") ||
+        name.includes("combo") ||
+        type.includes("đặt món") ||
+        code.includes("ONLINE") ||
+        code.includes("FAMILY")
+      );
+    }
+    if (catId === "event") {
+      return (
+        type.includes("sinh nhật") ||
+        type.includes("ngày lễ") ||
+        type.includes("sự kiện") ||
+        type.includes("đặc biệt") ||
+        type.includes("thành viên") ||
+        name.includes("sinh nhật") ||
+        name.includes("lễ") ||
+        name.includes("giáng sinh") ||
+        code.includes("BIRTHDAY") ||
+        code.includes("GIANGSINH") ||
+        code.includes("PHUNU")
+      );
+    }
+    return true;
+  };
+
+  const categoryCounts = useMemo(() => {
+    const counts = {
+      all: validDeals.length,
+      upcoming: 0,
+      food: 0,
+      booking: 0,
+      event: 0,
+    };
+    validDeals.forEach((d) => {
+      if (isDealUpcoming(d)) counts.upcoming++;
+      if (matchCategory(d, "food")) counts.food++;
+      if (matchCategory(d, "booking")) counts.booking++;
+      if (matchCategory(d, "event")) counts.event++;
+    });
+    return counts;
+  }, [validDeals]);
+
+  const filteredDeals = useMemo(() => {
+    return validDeals.filter((deal) => matchCategory(deal, activeTab));
+  }, [validDeals, activeTab]);
 
   return (
-    <div className="min-h-screen bg-[#fbf7ec] text-green-950">
-      <main className="max-w-[1500px] mx-auto px-4 md:px-6 py-10">
-        {/* HERO PROMO */}
-        {banner ? (
-          <section
-            className={`relative h-[315px] sm:h-[380px] md:h-[500px] overflow-hidden rounded-[22px] md:rounded-[30px] shadow-xl transition-all duration-1000 ease-in-out ${
-              isAnimating ? "opacity-100 scale-100" : "opacity-0 scale-[1.02]"
-            }`}
-          >
-            <img
-              src={banner.image}
-              alt={banner.scriptTitle}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-
-            <div
-              className="absolute inset-0 z-10"
-              style={{
-                background:
-                  "linear-gradient(90deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.08) 45%, rgba(0,0,0,0) 75%)",
-              }}
-            ></div>
-
-            <div
-              key={banner.id}
-              className="relative z-20 h-full w-full px-5 sm:px-8 md:px-14 lg:px-20 flex items-center"
-            >
-              {/* Lớp phủ mờ: đậm bên trái, mờ dần ra giữa */}
-              <div
-                className="absolute inset-y-0 left-0 w-[72%] z-[-1]"
-                style={{
-                  background:
-                    "linear-gradient(90deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.52) 38%, rgba(0,0,0,0.22) 68%, rgba(0,0,0,0) 100%)",
-                }}
+    <div className="min-h-screen bg-[#fafbfa] text-slate-800">
+      <SEO
+        title="Chương Trình Khuyến Mãi & Ưu Đãi | Nhà Hàng Dê Hương Sơn"
+        description="Tổng hợp các chương trình ưu đãi, giảm giá tiệc sinh nhật, combo gia đình hấp dẫn tại Nhà Hàng Dê Hương Sơn - Thanh Trì, Hà Nội. Đặt bàn nhận ưu đãi ngay!"
+        canonical="/deals"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Trang chủ",
+              item: "https://dehuongson.vercel.app/",
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Khuyến mãi",
+              item: "https://dehuongson.vercel.app/deals",
+            },
+          ],
+        }}
+      />
+      <main className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 lg:py-10">
+        {/* ================= HERO SECTION ================= */}
+        <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-[#f6f8ee] border border-emerald-900/10 p-5 sm:p-8 lg:p-10 shadow-xs">
+          {/* Họa tiết lá thanh nhã trang trí góc */}
+          <div className="absolute top-0 right-0 pointer-events-none opacity-40 translate-x-4 -translate-y-4 select-none">
+            <svg width="240" height="240" viewBox="0 0 200 200" fill="none">
+              <path
+                d="M180 20 C140 40 120 80 130 130 C90 120 50 140 20 180 C40 140 80 120 130 130 C120 90 140 50 180 20 Z"
+                fill="#145c30"
+                opacity="0.10"
               />
+              <path
+                d="M190 70 C160 85 140 115 150 150 C120 140 90 160 70 190"
+                stroke="#145c30"
+                strokeWidth="2.5"
+                opacity="0.15"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
 
-              <div className="w-full max-w-[760px] drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)]">
-                <span className="w-fit inline-flex items-center gap-2 border border-[#d6a84f] text-[#f6d47a] px-4 py-2 rounded-lg text-[10px] sm:text-xs md:text-sm font-black uppercase tracking-wide">
-                  <Star className="w-4 h-4" />
-                  {banner.label}
-                </span>
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+            {/* Cột trái: Thông tin ưu đãi */}
+            <div className="lg:col-span-7">
+              {/* Badge ƯU ĐÃI ĐẶC BIỆT */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e3ece4] text-[#145c30] text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-3.5 border border-emerald-200/50 shadow-2xs">
+                <Sparkles className="w-3.5 h-3.5 text-[#145c30] fill-[#145c30]" />
+                <span>ƯU ĐÃI ĐẶC BIỆT</span>
+              </div>
 
-                <p
-                  className="mt-3 text-3xl sm:text-5xl md:text-6xl text-white leading-none"
-                  style={{ fontFamily: "'Great Vibes', cursive" }}
-                >
-                  {banner.scriptTitle}
-                </p>
+              {/* Tiêu đề chính */}
+              <h1 className="text-2xl sm:text-4xl lg:text-[42px] font-black text-[#0f381e] tracking-tight leading-[1.18]">
+                Khuyến mãi hấp dẫn <br />
+                Tại Dê Hương Sơn
+              </h1>
 
-                <h1 className="mt-2 text-4xl sm:text-6xl md:text-7xl font-black uppercase leading-none text-white">
-                  {banner.title}{" "}
-                  <span className="text-[#f6d47a]">{banner.discount}</span>
-                </h1>
+              {/* Đoạn mô tả */}
+              <p className="mt-2.5 sm:mt-3 text-slate-600 text-xs sm:text-sm md:text-[15px] max-w-lg leading-relaxed">
+                Thưởng thức món ngon – Nhận ngay ưu đãi hấp dẫn với nhiều chương
+                trình khuyến mãi trong tháng!
+              </p>
 
-                <p className="mt-5 text-sm sm:text-base md:text-lg text-white/90 leading-relaxed max-w-[680px]">
-                  {banner.desc}
-                </p>
-
-                {banner.conditions.length > 0 && (
-                  <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 max-w-[720px]">
-                    {banner.conditions.slice(0, 4).map((text, index) => (
-                      <div
-                        key={text}
-                        className="min-h-[72px] rounded-2xl border border-white/15 bg-white/10 px-3 py-3 flex items-start gap-2 text-white/90"
-                      >
-                        {index === 0 && (
-                          <CalendarDays className="w-4 h-4 text-[#f6d47a] shrink-0 mt-0.5" />
-                        )}
-
-                        {index === 1 && (
-                          <Utensils className="w-4 h-4 text-[#f6d47a] shrink-0 mt-0.5" />
-                        )}
-
-                        {index >= 2 && (
-                          <Gift className="w-4 h-4 text-[#f6d47a] shrink-0 mt-0.5" />
-                        )}
-
-                        <span className="text-xs md:text-[13px] leading-snug line-clamp-3">
-                          {text}
-                        </span>
-                      </div>
-                    ))}
+              {/* 3 Lợi ích nổi bật */}
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-5 sm:pt-6 mt-4 sm:mt-5 border-t border-emerald-900/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#145c30] text-white flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">
+                    %
                   </div>
-                )}
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-slate-900 leading-tight">
+                      Giảm giá hấp dẫn
+                    </div>
+                    <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                      lên đến 25%
+                    </div>
+                  </div>
+                </div>
 
-                <button
-                  onClick={() => navigate(`/deals/${banner.id}`)}
-                  className="mt-5 w-[190px] sm:w-[230px] md:w-[250px] h-11 sm:h-12 bg-[#f6c441] text-green-950 rounded-xl text-xs sm:text-sm md:text-base font-black hover:bg-[#d6a84f] hover:scale-105 transition"
-                >
-                  Xem chi tiết ưu đãi →
-                </button>
+                <div className="hidden sm:block w-px h-6 bg-slate-300/70" />
+
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#145c30] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Gift className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-slate-900 leading-tight">
+                      Ưu đãi đa dạng
+                    </div>
+                    <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                      cho mọi dịp
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hidden sm:block w-px h-6 bg-slate-300/70" />
+
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#145c30] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Clock className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-slate-900 leading-tight">
+                      Cập nhật liên tục
+                    </div>
+                    <div className="text-[11px] text-slate-500 leading-tight mt-0.5">
+                      hàng tháng
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {heroDeals.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={handlePrevBanner}
-                  className="hidden sm:flex absolute left-4 md:left-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-black/35 text-white items-center justify-center text-3xl font-bold hover:bg-black/55 transition"
-                >
-                  ‹
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleNextBanner}
-                  className="absolute right-4 md:right-6 top-1/2 -translate-y-1/2 z-30 w-11 h-11 rounded-full bg-black/35 text-white flex items-center justify-center text-3xl font-bold hover:bg-black/55 transition"
-                >
-                  ›
-                </button>
-
-                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-30 flex gap-2">
-                  {heroDeals.map((item, index) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setCurrentBanner(index)}
-                      className={`h-2 rounded-full transition-all ${
-                        currentBanner === index
-                          ? "w-8 bg-[#f6c441]"
-                          : "w-2 bg-white/50"
-                      }`}
-                    ></button>
-                  ))}
-                </div>
-              </>
-            )}
-          </section>
-        ) : (
-          <section className="relative h-[260px] sm:h-[320px] md:h-[420px] rounded-[22px] md:rounded-[30px] shadow-xl bg-white border border-[#eadfcd] flex items-center justify-center text-center px-6">
-            <div>
-              <p className="text-2xl md:text-4xl font-black text-[#145c30]">
-                Chưa có khuyến mãi nổi bật
-              </p>
-
-              <p className="text-sm md:text-base text-gray-500 mt-3">
-                Các chương trình khuyến mãi sẽ được cập nhật sau.
-              </p>
+            {/* Cột phải: Hình minh họa đĩa món ngon với chữ nghệ thuật hòa trộn liền mạch */}
+            <div className="lg:col-span-5 relative flex items-center justify-center select-none pt-2 sm:pt-0">
+              <img
+                src={heroIllustration}
+                alt="Món ngon Hương vị thật! - Dê Hương Sơn"
+                className="w-full max-w-[460px] lg:max-w-[500px] object-contain select-none hover:scale-[1.02] transition-transform duration-700 ease-out"
+              />
             </div>
-          </section>
-        )}
-
-        <SectionTitle
-          title="Ưu đãi đang diễn ra"
-          subtitle="Nhiều chương trình hấp dẫn dành riêng cho bạn"
-        />
-
-        <section className="mb-10">
-          <Swiper
-            modules={[Navigation, Pagination, Autoplay]}
-            navigation
-            pagination={{ clickable: true }}
-            loop={activeAdminDeals.length > 4}
-            loopAdditionalSlides={activeAdminDeals.length}
-            grabCursor={true}
-            allowTouchMove={true}
-            speed={1000}
-            autoplay={
-              activeAdminDeals.length > 4
-                ? {
-                    delay: 5000,
-                    disableOnInteraction: false,
-                    pauseOnMouseEnter: true,
-                    stopOnLastSlide: false,
-                  }
-                : false
-            }
-            breakpoints={{
-              0: {
-                slidesPerView: 1.1,
-                spaceBetween: 14,
-              },
-              640: {
-                slidesPerView: 2,
-                spaceBetween: 16,
-              },
-              1024: {
-                slidesPerView: 3,
-                spaceBetween: 20,
-              },
-              1280: {
-                slidesPerView: 4,
-                spaceBetween: 20,
-              },
-            }}
-            className="deal-swiper pb-10"
-          >
-            {activeAdminDeals.length > 0 ? (
-              activeAdminDeals.map((item, index) => (
-                <SwiperSlide key={`${item.id || item.code}-${index}`}>
-                  <div className="relative h-[360px] sm:h-[460px] lg:h-[520px] rounded-3xl border border-[#eadfcd] shadow-sm overflow-hidden hover:-translate-y-1 hover:shadow-md transition group cursor-grab active:cursor-grabbing">
-                    <img
-                      src={item.cardImage || item.detailImage || comboCardImg}
-                      alt={item.name}
-                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition duration-700"
-                    />
-
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/10 to-transparent"></div>
-
-                    <div className="relative z-10 h-full p-5 sm:p-6 flex flex-col">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-white/20 backdrop-blur text-[#f6d47a] flex items-center justify-center shrink-0">
-                          <Gift className="w-5 h-5" />
-                        </div>
-
-                        <h3 className="font-black text-base text-white drop-shadow">
-                          {item.name}
-                        </h3>
-                      </div>
-
-                      <div className="h-[70px] sm:h-[90px] flex items-center">
-                        <h2 className="font-black uppercase leading-tight text-3xl sm:text-4xl text-green-700">
-                          {String(item.discount || "").includes("%") ? (
-                            <>
-                              Giảm{" "}
-                              <span className="text-4xl sm:text-5xl text-[#f6d47a]">
-                                {item.discount}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-2xl sm:text-3xl text-green-700">
-                              {item.discount}
-                            </span>
-                          )}
-                        </h2>
-                      </div>
-
-                      <div className="w-8 h-[2px] bg-[#f6d47a] mt-0 mb-1"></div>
-
-                      <p className="text-xs sm:text-sm text-white/90 leading-relaxed line-clamp-2">
-                        {item.desc || item.subtitle}
-                      </p>
-
-                      {Number(item.condition || 0) > 0 && (
-                        <p className="mt-2 text-xs sm:text-sm text-[#f6d47a] font-bold">
-                          HĐ từ{" "}
-                          {Number(item.condition || 0).toLocaleString("vi-VN")}đ
-                        </p>
-                      )}
-
-                      <div className="mt-auto pt-6">
-                        <button
-                          onClick={() => navigate(getDealUrl(item))}
-                          className="w-full h-10 sm:h-12 bg-black/25 border border-white/30 text-white px-4 rounded-xl font-bold text-xs sm:text-sm hover:bg-[#f6c441] hover:text-green-950 hover:border-[#f6c441] transition"
-                        >
-                          Xem chi tiết →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </SwiperSlide>
-              ))
-            ) : (
-              <SwiperSlide>
-                <div className="h-[260px] rounded-3xl border border-[#eadfcd] bg-white flex items-center justify-center text-center p-6">
-                  <div>
-                    <p className="text-xl font-black text-green-900">
-                      Chưa có khuyến mãi đang diễn ra
-                    </p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      Các chương trình khuyến mãi sẽ được cập nhật sau.
-                    </p>
-                  </div>
-                </div>
-              </SwiperSlide>
-            )}
-          </Swiper>
+          </div>
         </section>
 
-        <SectionTitle title="Điều kiện áp dụng" />
+        {/* ================= FILTER TABS ================= */}
+        <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 my-6 sm:my-8 scrollbar-none">
+          {filterCategories.map((cat) => {
+            const isActive = activeTab === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveTab(cat.id)}
+                className={`px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap cursor-pointer active:scale-95 ${
+                  isActive
+                    ? "bg-[#145c30] text-white shadow-sm"
+                    : "bg-white border border-slate-200/80 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {cat.label} ({categoryCounts[cat.id] || 0})
+              </button>
+            );
+          })}
+        </div>
 
-        <section className="bg-white border border-[#eadfcd] rounded-3xl shadow-sm p-4 sm:p-6 grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
-          {activeAdminDeals.length > 0 ? (
-            activeAdminDeals.slice(0, 4).map((deal) => {
-              const conditions = getDealConditions(deal);
+        {/* ================= 2-COLUMN DEALS GRID ================= */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 mb-8 sm:mb-10">
+          {filteredDeals.length > 0 ? (
+            filteredDeals.map((deal) => {
+              const badge = getDealBadge(deal);
+              const image = getDealCardImage(deal);
+              const discountText = formatDiscount(deal.discount);
 
               return (
-                <div key={deal.id || deal.code} className="flex gap-4">
-                  <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-green-50 text-green-900 flex items-center justify-center shrink-0">
-                    <Gift />
+                <div
+                  key={deal.id || deal.code}
+                  className="bg-white rounded-2xl sm:rounded-3xl border border-slate-100 shadow-xs hover:shadow-md transition-all duration-300 p-3.5 sm:p-4 flex flex-col sm:flex-row gap-3.5 sm:gap-4.5 group"
+                >
+                  {/* Cột trái: Ảnh món ăn + Nhãn giảm giá cam */}
+                  <div className="relative w-full sm:w-[175px] md:w-[195px] lg:w-[205px] h-[175px] sm:h-auto min-h-[160px] rounded-xl sm:rounded-2xl overflow-hidden shrink-0 bg-slate-100">
+                    {discountText && (
+                      <div className="absolute top-3 left-3 z-10 bg-[#ff6e1d] text-white font-bold text-xs sm:text-[13px] px-3.5 py-1 rounded-full shadow-sm">
+                        {discountText}
+                      </div>
+                    )}
+                    <img
+                      src={image}
+                      alt={deal.name}
+                      className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-700 ease-out"
+                    />
                   </div>
 
-                  <div>
-                    <h3 className="font-black text-green-900 mb-3">
-                      {deal.name}
-                    </h3>
+                  {/* Cột phải: Thông tin chi tiết */}
+                  <div className="flex-1 flex flex-col justify-between py-0.5">
+                    <div>
+                      {/* Nhãn hình thức & Trạng thái */}
+                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#eaf4ea] text-[#1e6b37] w-fit">
+                          {badge}
+                        </span>
+                        {isDealUpcoming(deal) && (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80 w-fit">
+                            Sắp diễn ra
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="space-y-2">
-                      {(conditions.length > 0
-                        ? conditions
-                        : ["Không có điều kiện bổ sung"]
-                      ).map((text) => (
-                        <p
-                          key={text}
-                          className="flex items-start gap-2 text-sm text-gray-600"
-                        >
-                          <CheckCircle className="w-4 h-4 text-[#d6a84f] shrink-0 mt-0.5" />
-                          {text}
-                        </p>
-                      ))}
+                      {/* Tiêu đề ưu đãi */}
+                      <h3 className="font-extrabold text-sm sm:text-base text-slate-900 group-hover:text-[#145c30] transition-colors leading-snug line-clamp-2">
+                        {deal.name}
+                      </h3>
+
+                      {/* Mô tả ưu đãi */}
+                      <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
+                        {deal.subtitle ||
+                          deal.desc ||
+                          "Ưu đãi hấp dẫn dành cho quý khách hàng tại Dê Hương Sơn."}
+                      </p>
+
+                      {/* Thời hạn áp dụng */}
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-500 font-medium mt-2.5">
+                        <CalendarDays className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>
+                          Áp dụng: {formatDate(deal.startDate)}
+                          {deal.endDate ? ` - ${formatDate(deal.endDate)}` : ""}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Nút Xem chi tiết */}
+                    <div className="pt-3 mt-auto">
+                      <button
+                        type="button"
+                        onClick={() => navigate(getDealUrl(deal))}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#145c30] hover:bg-[#0f4423] text-white font-bold text-xs transition active:scale-95 shadow-2xs w-fit cursor-pointer"
+                      >
+                        <span>Xem chi tiết</span>
+                        <span>→</span>
+                      </button>
                     </div>
                   </div>
                 </div>
               );
             })
           ) : (
-            <div className="lg:col-span-4 py-10 text-center text-gray-400 font-bold">
-              Chưa có điều kiện áp dụng từ chương trình khuyến mãi.
+            <div className="md:col-span-2 py-12 text-center bg-white rounded-2xl border border-slate-200/60 p-6">
+              <p className="text-slate-600 font-bold text-sm">
+                Chưa có chương trình ưu đãi trong danh mục này.
+              </p>
             </div>
           )}
-        </section>
+        </div>
 
-        <SectionTitle title="Ưu đãi sắp diễn ra" />
+        {/* ================= BOTTOM CTA BANNER ================= */}
+        <section className="bg-[#f2f6ea] border border-emerald-900/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 relative overflow-hidden shadow-2xs">
+          {/* Họa tiết lá chân thực góc phải dưới */}
+          <img
+            src={ctaLeaves}
+            alt=""
+            aria-hidden="true"
+            className="absolute right-0 bottom-0 max-h-[85px] sm:max-h-[95px] object-contain pointer-events-none select-none opacity-80"
+          />
 
-        <section className="relative mb-10">
-          <Swiper
-            modules={[Navigation, Pagination, Autoplay]}
-            navigation={upcomingAdminDeals.length > 1}
-            pagination={{ clickable: true }}
-            loop={upcomingAdminDeals.length > 4}
-            loopAdditionalSlides={upcomingAdminDeals.length}
-            grabCursor={true}
-            allowTouchMove={true}
-            speed={1000}
-            autoplay={
-              upcomingAdminDeals.length > 4
-                ? {
-                    delay: 5000,
-                    disableOnInteraction: false,
-                    pauseOnMouseEnter: true,
-                  }
-                : false
-            }
-            breakpoints={{
-              0: {
-                slidesPerView: 1.1,
-                spaceBetween: 14,
-              },
-              640: {
-                slidesPerView: 2,
-                spaceBetween: 16,
-              },
-              1024: {
-                slidesPerView: 3,
-                spaceBetween: 20,
-              },
-              1280: {
-                slidesPerView: 4,
-                spaceBetween: 20,
-              },
-            }}
-            className="deal-swiper pb-10"
-          >
-            {upcomingAdminDeals.length > 0 ? (
-              upcomingAdminDeals.map((item) => (
-                <SwiperSlide key={item.id || item.code}>
-                  <button
-                    type="button"
-                    onClick={() => navigate(getDealUrl(item))}
-                    className="w-full h-[150px] text-left bg-white border border-[#eadfcd] rounded-2xl p-5 shadow-sm flex items-center gap-4 hover:-translate-y-1 hover:shadow-md hover:border-[#d6a84f] transition group"
-                  >
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-[#fbf0dc] text-green-900 flex items-center justify-center shrink-0 group-hover:bg-green-900 group-hover:text-[#f6d47a] transition">
-                      <CalendarDays />
-                    </div>
-
-                    <div className="min-w-0">
-                      <h3 className="font-black text-green-900 group-hover:text-[#b88935] transition line-clamp-1">
-                        {item.name}
-                      </h3>
-
-                      <p className="text-sm font-bold text-gray-600 mt-1">
-                        {item.startDate ? new Date(item.startDate).toLocaleDateString("vi-VN") : "Chưa có"} -{" "}
-                        {item.endDate ? new Date(item.endDate).toLocaleDateString("vi-VN") : "Chưa có"}
-                      </p>
-
-                      <p className="text-xs text-gray-500 mt-2 leading-relaxed line-clamp-2">
-                        {item.desc || item.subtitle || "Ưu đãi sắp diễn ra."}
-                      </p>
-
-                      <p className="text-xs font-black text-green-900 mt-3 opacity-0 group-hover:opacity-100 transition">
-                        Xem chi tiết →
-                      </p>
-                    </div>
-                  </button>
-                </SwiperSlide>
-              ))
-            ) : (
-              <SwiperSlide>
-                <div className="h-[150px] bg-white border border-[#eadfcd] rounded-2xl p-5 flex items-center justify-center text-center text-gray-400 font-bold">
-                  Chưa có ưu đãi sắp diễn ra
-                </div>
-              </SwiperSlide>
-            )}
-          </Swiper>
-        </section>
-
-        <section className="grid lg:grid-cols-2 gap-6">
-          <div
-            className="relative overflow-hidden rounded-3xl min-h-[230px] md:min-h-[300px] p-6 md:p-10 flex flex-col justify-center"
-            style={{
-              backgroundImage: `linear-gradient(90deg, rgba(0,50,25,.95) 0%, rgba(0,50,25,.82) 45%, rgba(0,50,25,.35) 100%), url(${restaurantSpace})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full border-2 border-[#f6c441] flex items-center justify-center">
-                <CalendarDays className="w-6 h-6 text-[#f6c441]" />
-              </div>
-
-              <h2 className="text-2xl md:text-4xl font-black text-white">
-                Đặt bàn ngay
-              </h2>
+          <div className="relative z-10 flex items-center gap-3.5 sm:gap-4 text-center sm:text-left">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#145c30] text-white flex items-center justify-center shrink-0 shadow-xs mx-auto sm:mx-0">
+              <Utensils className="w-5 h-5 text-white" />
             </div>
 
-            <div className="w-16 h-1 bg-[#f6c441] rounded-full mt-4 mb-5" />
-
-            <p className="text-white/85 max-w-md leading-relaxed">
-              Giữ chỗ nhanh chóng cho gia đình, bạn bè và các buổi tiệc sinh
-              nhật, liên hoan tại Dê Hương Sơn.
-            </p>
-
-            <button
-              onClick={() => navigate("/booking")}
-              className="mt-7 w-fit bg-[#f6c441] hover:bg-[#ffd35a] hover:scale-105 transition-all duration-300 px-7 py-3 rounded-xl font-bold text-green-950 shadow-lg"
-            >
-              Đặt bàn ngay →
-            </button>
+            <div>
+              <h4 className="font-extrabold text-sm sm:text-base text-slate-900">
+                Đặt bàn ngay – Nhận ưu đãi tức thì!
+              </h4>
+              <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
+                Nhanh tay đặt bàn để không bỏ lỡ những chương trình hấp dẫn.
+              </p>
+            </div>
           </div>
 
-          <div
-            className="relative overflow-hidden rounded-3xl min-h-[300px] p-8 md:p-10 flex flex-col justify-center"
-            style={{
-              backgroundImage: `linear-gradient(90deg, rgba(0,50,25,.95) 0%, rgba(0,50,25,.82) 45%, rgba(0,50,25,.35) 100%), url(${goatFood})`,
-              backgroundSize: "cover",
-              backgroundPosition: "right center",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full border-2 border-[#f6c441] flex items-center justify-center">
-                <Utensils className="w-6 h-6 text-[#f6c441]" />
-              </div>
-
-              <h2 className="text-2xl md:text-4xl font-black text-white">
-                Đặt món ngay
-              </h2>
-            </div>
-
-            <div className="w-16 h-1 bg-[#f6c441] rounded-full mt-4 mb-5" />
-
-            <p className="text-white/85 max-w-md leading-relaxed">
-              Khám phá thực đơn đặc sản dê Hương Sơn với những món ăn đậm vị núi
-              rừng Hà Tĩnh.
-            </p>
-
+          <div className="relative z-10 w-full sm:w-auto">
             <button
-              onClick={() => navigate("/menu")}
-              className="mt-7 w-fit bg-white hover:bg-[#fff7dc] hover:scale-105 transition-all duration-300 px-7 py-3 rounded-xl font-bold text-green-900 shadow-lg"
+              type="button"
+              onClick={() => navigate("/booking")}
+              className="w-full sm:w-auto px-6 py-2.5 rounded-full bg-[#145c30] hover:bg-[#0f4423] text-white font-bold text-xs sm:text-sm transition active:scale-95 shadow-xs whitespace-nowrap cursor-pointer text-center"
             >
-              Xem thực đơn →
+              Đặt bàn ngay →
             </button>
           </div>
         </section>
       </main>
     </div>
-  );
-}
-
-function SectionTitle({ title, subtitle }) {
-  return (
-    <section className="text-center my-8">
-      <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#145c30] uppercase leading-tight">
-        {title}
-      </h2>
-
-      {subtitle && <p className="text-gray-500 text-sm mt-2">{subtitle}</p>}
-
-      <div className="flex items-center justify-center gap-4 mt-3">
-        <div className="w-20 sm:w-28 h-px bg-[#d6a84f]"></div>
-
-        <img
-          src={goatIcon}
-          alt="Dê Hương Sơn"
-          className="w-8 h-8 object-contain"
-        />
-
-        <div className="w-20 sm:w-28 h-px bg-[#d6a84f]"></div>
-      </div>
-    </section>
   );
 }
 

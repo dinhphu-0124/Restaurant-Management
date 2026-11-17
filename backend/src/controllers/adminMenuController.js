@@ -14,7 +14,7 @@ function parseImages(value) {
 
 function normalizeImageUrl(url) {
   if (!url || typeof url !== "string") return url;
-  return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):5001/, "");
+  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, "");
 }
 
 function mapMenuItem(row, priceOptions = []) {
@@ -51,8 +51,8 @@ function mapMenuItem(row, priceOptions = []) {
     id: row.code,
     dbId: row.id,
     name: row.name,
-    image: row.image || images[0] || DEFAULT_IMAGE,
-    images: images.length > 0 ? images : [row.image || DEFAULT_IMAGE],
+    image: image,
+    images: images.length > 0 ? images : [image],
     category:
       row.category_name || row.sub_category || row.parent_category || "",
     parentCategory: row.parent_category || row.category_name || "",

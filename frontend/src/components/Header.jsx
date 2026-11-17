@@ -230,7 +230,12 @@ function Header({ currentPage = "home" }) {
                 }, 1000);
               }}
             >
-              <Link to="/cart" className="relative text-green-900 mr-2 p-2 hover:bg-slate-100 rounded-xl transition">
+              <Link
+                to="/cart"
+                id="cart-btn-desktop"
+                aria-label="Giỏ hàng"
+                className="relative text-green-900 mr-2 p-2 hover:bg-slate-100 rounded-xl transition"
+              >
                 <ShoppingCart className="w-5 h-5" />
 
                 {totalCartQty > 0 && (
@@ -312,6 +317,7 @@ function Header({ currentPage = "home" }) {
         <div className="flex lg:hidden items-center gap-2">
           <Link
             to="/cart"
+            id="cart-btn-mobile"
             aria-label="Giỏ hàng"
             className="w-10 h-10 rounded-xl text-green-900 flex items-center justify-center hover:bg-slate-100 transition relative"
           >

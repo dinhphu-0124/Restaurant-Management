@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { getImageUrl } from "../config/api";
 import {
   X,
   ChevronLeft,
@@ -151,6 +152,20 @@ export default function DishDetailModal({
       .filter(Boolean);
   }, [selectedDish?.ingredients]);
 
+  // Khóa cuộn trang nền khi mở modal chi tiết món
+  useEffect(() => {
+    if (selectedDish) {
+      const originalBodyOverflow = document.body.style.overflow;
+      const originalHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalBodyOverflow;
+        document.documentElement.style.overflow = originalHtmlOverflow;
+      };
+    }
+  }, [selectedDish]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
@@ -183,15 +198,26 @@ export default function DishDetailModal({
         className="bg-white rounded-[26px] sm:rounded-[32px] max-w-5xl w-full h-[86dvh] sm:h-[90vh] max-h-[850px] shadow-2xl relative text-sm overflow-hidden border border-slate-200 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* CLOSE BUTTON */}
-        <button
-          type="button"
-          aria-label="Đóng chi tiết"
-          onClick={() => setSelectedDish(null)}
-          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-slate-700 hover:text-slate-900 shadow-md flex items-center justify-center transition-all cursor-pointer border border-slate-200 active:scale-90"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* HEADER BAR: STICKY AT TOP - PREVENTS OVERLAPPING SCROLLED CONTENT */}
+        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between shrink-0 shadow-2xs">
+          <div className="min-w-0 pr-3">
+            <span className="text-[10px] sm:text-[11px] font-bold text-[#15803d] uppercase tracking-wider block leading-none">
+              Chi tiết món ăn
+            </span>
+            <h2 className="font-extrabold text-sm sm:text-base text-slate-900 truncate mt-0.5">
+              {dynamicTitle}
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Đóng chi tiết"
+            onClick={() => setSelectedDish(null)}
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 flex items-center justify-center transition cursor-pointer border border-slate-200/80 active:scale-90 shrink-0"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </header>
 
         {/* SCROLLABLE BODY */}
         <div
@@ -204,7 +230,7 @@ export default function DishDetailModal({
             <div className="space-y-2">
               <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden aspect-[16/10] sm:aspect-[16/11] bg-slate-100 border border-slate-200/80 shadow-xs group">
                 <img
-                  src={displayedImage || "/images/placeholder.jpg"}
+                  src={getImageUrl(displayedImage) || "/images/placeholder.jpg"}
                   alt={selectedDish.name}
                   onError={(e) => {
                     e.currentTarget.onerror = null;
@@ -223,7 +249,7 @@ export default function DishDetailModal({
 
                 {/* Status Badge if paused */}
                 {selectedDish.status === "paused" && (
-                  <div className="absolute top-2.5 right-13 z-20 px-2.5 py-1 rounded-full bg-slate-900/90 text-white text-[10px] sm:text-[11px] font-black tracking-wider uppercase backdrop-blur-xs shadow-md">
+                  <div className="absolute top-2.5 right-2.5 z-20 px-2.5 py-1 rounded-full bg-slate-900/90 text-white text-[10px] sm:text-[11px] font-black tracking-wider uppercase backdrop-blur-xs shadow-md">
                     Tạm hết món
                   </div>
                 )}
@@ -267,7 +293,7 @@ export default function DishDetailModal({
                       }`}
                     >
                       <img
-                        src={img || "/images/placeholder.jpg"}
+                        src={getImageUrl(img) || "/images/placeholder.jpg"}
                         alt=""
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -496,17 +522,17 @@ export default function DishDetailModal({
                       key={t.key}
                       type="button"
                       onClick={() => setActiveTab(t.key)}
-                      className={`py-1.5 px-1 text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer rounded-xl ${
+                      className={`py-1.5 px-0.5 sm:px-1 text-[10.5px] sm:text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer rounded-xl whitespace-nowrap min-w-0 ${
                         isActive
                           ? "bg-emerald-50 text-[#15803d] border border-emerald-100 font-black shadow-2xs"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                     >
                       <Icon
-                        size={12}
-                        className={isActive ? "text-[#15803d]" : "text-slate-400"}
+                        size={11}
+                        className={`shrink-0 ${isActive ? "text-[#15803d]" : "text-slate-400"}`}
                       />
-                      <span>{t.label}</span>
+                      <span className="truncate">{t.label}</span>
                     </button>
                   );
                 })}
@@ -643,25 +669,25 @@ export default function DishDetailModal({
         </div>
 
         {/* ELEVATED STICKY BOTTOM ACTION BAR (SAFE FROM MOBILE NAVIGATION & URL BARS) */}
-        <div className="border-t border-slate-200 bg-white px-3.5 pt-2.5 pb-[max(env(safe-area-inset-bottom),12px)] sm:px-6 sm:py-3.5 shrink-0 flex items-center justify-between gap-3 shadow-[0_-8px_24px_rgba(0,0,0,0.1)] z-30">
-          {/* Quantity Stepper (Rộng rãi, cân đối và dễ bấm hơn) */}
-          <div className="h-11 sm:h-12 rounded-2xl border border-slate-200/90 flex items-center justify-between px-2 bg-slate-50 w-32 sm:w-36 md:w-40 shrink-0 shadow-2xs">
+        <div className="border-t border-slate-200 bg-white px-3 sm:px-6 py-2.5 sm:py-3.5 pb-[max(env(safe-area-inset-bottom),12px)] shrink-0 flex items-center justify-between gap-2 sm:gap-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] z-30">
+          {/* Quantity Stepper (Gọn gàng trên mobile, rộng rãi trên desktop) */}
+          <div className="h-10 sm:h-12 rounded-xl sm:rounded-2xl border border-slate-200/90 flex items-center justify-between px-1.5 sm:px-2 bg-slate-50 w-24 sm:w-36 shrink-0 shadow-2xs">
             <button
               type="button"
               aria-label="Giảm số lượng"
               onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-slate-700 hover:text-slate-950 hover:border-slate-300 font-black text-lg flex items-center justify-center cursor-pointer shadow-2xs transition active:scale-90"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-slate-950 font-black text-base sm:text-lg flex items-center justify-center cursor-pointer shadow-2xs transition active:scale-90"
             >
               -
             </button>
-            <span className="font-black text-sm sm:text-base text-slate-900 min-w-[28px] text-center select-none">
+            <span className="font-black text-xs sm:text-base text-slate-900 min-w-[20px] sm:min-w-[28px] text-center select-none">
               {quantity}
             </span>
             <button
               type="button"
               aria-label="Tăng số lượng"
               onClick={() => setQuantity(quantity + 1)}
-              className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-slate-700 hover:text-slate-950 hover:border-slate-300 font-black text-lg flex items-center justify-center cursor-pointer shadow-2xs transition active:scale-90"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-slate-950 font-black text-base sm:text-lg flex items-center justify-center cursor-pointer shadow-2xs transition active:scale-90"
             >
               +
             </button>
@@ -677,20 +703,23 @@ export default function DishDetailModal({
               addToCart(selectedDish, quantity, e, chosenOption);
               setSelectedDish(null);
             }}
-            className="flex-1 h-11 sm:h-12 px-4 sm:px-6 rounded-2xl bg-[#15803d] hover:bg-[#166534] active:scale-[0.98] text-white text-xs sm:text-sm md:text-base font-black flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-50"
+            className="flex-1 min-w-0 h-10 sm:h-12 px-3 sm:px-6 rounded-xl sm:rounded-2xl bg-[#15803d] hover:bg-[#166534] active:scale-[0.98] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 sm:gap-2 shadow-md transition cursor-pointer disabled:opacity-50"
           >
-            <ShoppingCart size={17} className="shrink-0" />
-            <span className="truncate">
-              Thêm vào giỏ •{" "}
-              {Number(
-                (currentOption?.price ||
-                  selectedDish.priceNumber ||
-                  (typeof selectedDish.price === "number"
-                    ? selectedDish.price
-                    : Number(String(selectedDish.price || 0).replace(/\D/g, ""))) ||
-                  0) * quantity,
-              ).toLocaleString("vi-VN")}
-              đ
+            <ShoppingCart size={16} className="shrink-0" />
+            <span className="whitespace-nowrap">Thêm vào giỏ hàng</span>
+            <span className="hidden sm:inline-flex items-center gap-1.5 shrink-0 font-black whitespace-nowrap">
+              <span className="opacity-60">•</span>
+              <span>
+                {Number(
+                  (currentOption?.price ||
+                    selectedDish.priceNumber ||
+                    (typeof selectedDish.price === "number"
+                      ? selectedDish.price
+                      : Number(String(selectedDish.price || 0).replace(/\D/g, ""))) ||
+                    0) * quantity,
+                ).toLocaleString("vi-VN")}
+                đ
+              </span>
             </span>
           </button>
         </div>

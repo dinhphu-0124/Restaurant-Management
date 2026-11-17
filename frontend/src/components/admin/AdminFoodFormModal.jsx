@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { getImageUrl } from "../../config/api";
 import {
   X,
   Plus,
@@ -823,8 +824,12 @@ export default function AdminFoodFormModal({
                   {editForm.image ? (
                     <>
                       <img
-                        src={editForm.image}
+                        src={getImageUrl(editForm.image) || "/images/placeholder.jpg"}
                         alt={editForm.name || "Ảnh món ăn"}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/src/assets/images/Menu/default-food.png";
+                        }}
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1.5 backdrop-blur-2xs">
@@ -876,8 +881,12 @@ export default function AdminFoodFormModal({
                             }`}
                           >
                             <img
-                              src={img}
+                              src={getImageUrl(img) || "/images/placeholder.jpg"}
                               alt=""
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = "/src/assets/images/Menu/default-food.png";
+                              }}
                               className="w-full h-full object-cover"
                             />
 

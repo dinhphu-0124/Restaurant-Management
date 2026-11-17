@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle, XCircle } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
+import SEO from "../components/common/SEO";
 
 function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -52,6 +53,7 @@ function VerifyEmailPage() {
 
   return (
     <div className="min-h-screen bg-[#fbfcf0] flex items-center justify-center px-4">
+      <SEO title="Xác Thực Email" noindex={true} />
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center">
         <div
           className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${

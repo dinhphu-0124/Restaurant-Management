@@ -1,6 +1,7 @@
 import React from "react";
 import { X, Copy } from "lucide-react";
 import { DetailBlock, DetailRow, MiniStat } from "./AdminDealsComponents";
+import { getDealLifecycle } from "../../utils/dealsHelpers";
 
 export default function DealDetailPanel({
   deal,
@@ -13,7 +14,9 @@ export default function DealDetailPanel({
   onEdit,
   onTogglePause,
   onDelete,
+  onClone,
 }) {
+  const lifecycle = getDealLifecycle(deal);
   const usageHistory = Array.isArray(deal.usageHistory)
     ? deal.usageHistory.slice(-7)
     : [];
@@ -24,7 +27,7 @@ export default function DealDetailPanel({
   );
 
   return (
-    <aside className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden xl:sticky xl:top-4 text-left">
+    <aside className="bg-white rounded-2xl border-0 sm:border border-gray-100 shadow-none sm:shadow-sm overflow-hidden xl:sticky xl:top-4 text-left flex-1 flex flex-col">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-xl font-black text-primary">
           Chi tiết khuyến mãi
@@ -38,13 +41,21 @@ export default function DealDetailPanel({
       <div className="p-4 space-y-4">
         <div className="rounded-2xl bg-gradient-to-r from-green-950 to-green-700 p-5 text-white">
           <div className="flex items-center justify-between gap-3">
-            <span className="px-3 py-1 rounded-lg bg-white/15 text-xs font-black">
-              {getStatusText(deal.status)}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`px-3 py-1 rounded-lg text-xs font-black border ${lifecycle.badgeClass}`}>
+                {lifecycle.label}
+              </span>
+              {lifecycle.warningText && (
+                <span className="px-2.5 py-1 rounded-lg bg-amber-400 text-amber-950 text-xs font-black shadow-xs">
+                  ⚡ {lifecycle.warningText}
+                </span>
+              )}
+            </div>
 
             <button
               onClick={() => navigator.clipboard.writeText(deal.code)}
-              className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center"
+              className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center cursor-pointer"
+              title="Sao chép mã"
             >
               <Copy size={16} />
             </button>
@@ -158,6 +169,71 @@ export default function DealDetailPanel({
           <DetailRow label="Mô tả" value={deal.desc || "Không có"} />
         </DetailBlock>
 
+        <DetailBlock title="Hình ảnh truyền thông">
+          <div className="space-y-3">
+            {/* 1. Banner đầu trang */}
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-bold text-slate-700">1. Banner đầu trang</span>
+                <span className="text-[10px] text-slate-400 font-semibold">2243×701px</span>
+              </div>
+              {deal.bannerImage ? (
+                <div className="rounded-xl overflow-hidden border border-slate-200 aspect-[2243/701] max-h-[85px] bg-slate-50 shadow-2xs">
+                  <img src={deal.bannerImage} alt="Banner" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="py-3 px-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-slate-400 text-xs font-semibold">
+                  Chưa tải lên banner đầu trang
+                </div>
+              )}
+            </div>
+
+            {/* 2 & 3. Ảnh danh sách & Ảnh chi tiết */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-bold text-slate-700">2. Ảnh thẻ (dọc)</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">1023×1537px</span>
+                </div>
+                {deal.cardImage ? (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 aspect-[1023/1537] max-h-[140px] bg-slate-50 shadow-2xs">
+                    <img src={deal.cardImage} alt="Card" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-[105px] flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-slate-400 text-xs font-semibold p-2">
+                    Chưa có ảnh thẻ
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-bold text-slate-700">3. Ảnh chi tiết</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">1536×1024px</span>
+                </div>
+                {deal.detailImage ? (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 aspect-[1536/1024] max-h-[140px] bg-slate-50 shadow-2xs">
+                    <img src={deal.detailImage} alt="Detail" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="h-[105px] flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-slate-400 text-xs font-semibold p-2">
+                    Chưa có ảnh chi tiết
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Nút thao tác nhanh thay/thêm ảnh */}
+            <button
+              type="button"
+              onClick={onEdit}
+              className="w-full py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <span>Thay đổi / Cập nhật hình ảnh</span>
+            </button>
+          </div>
+        </DetailBlock>
+
         <div className="grid grid-cols-2 gap-3">
           <MiniStat
             label="Đã sử dụng"
@@ -242,22 +318,37 @@ export default function DealDetailPanel({
 
         <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100">
           <button
+            type="button"
             onClick={onEdit}
-            className="h-11 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-black hover:bg-blue-100"
+            className="h-11 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-black hover:bg-blue-100 transition cursor-pointer"
           >
             Sửa
           </button>
 
-          <button
-            onClick={onTogglePause}
-            className="h-11 rounded-xl bg-orange-50 text-orange-600 border border-orange-100 font-black hover:bg-orange-100"
-          >
-            {deal.status === "paused" ? "Bán lại" : "Tạm dừng"}
-          </button>
+          {lifecycle.key === "expired" || lifecycle.key === "invalid" ? (
+            <button
+              type="button"
+              onClick={() => onClone && onClone(deal)}
+              className="h-11 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-black hover:bg-emerald-100 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Nhân bản khuyến mãi này"
+            >
+              <Copy size={15} />
+              <span>Nhân bản</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onTogglePause}
+              className="h-11 rounded-xl bg-orange-50 text-orange-600 border border-orange-100 font-black hover:bg-orange-100 transition cursor-pointer"
+            >
+              {deal.status === "paused" ? "Kích hoạt" : "Tạm dừng"}
+            </button>
+          )}
 
           <button
+            type="button"
             onClick={onDelete}
-            className="h-11 rounded-xl bg-red-50 text-red-600 border border-red-100 font-black hover:bg-red-100"
+            className="h-11 rounded-xl bg-red-50 text-red-600 border border-red-100 font-black hover:bg-red-100 transition cursor-pointer"
           >
             Xóa
           </button>

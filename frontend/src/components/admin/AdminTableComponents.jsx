@@ -3,6 +3,7 @@ import {
   X
 } from "lucide-react";
 import { canUseAction } from "../../utils/permissions";
+import { getImageUrl } from "../../config/api";
 
 export const TABLE_STATUS = {
   available: "Trống",
@@ -396,8 +397,12 @@ export function TableDetailPanel({
                       <div key={item.id || idx} className="flex items-center gap-2 p-2 rounded-xl bg-gray-50 border border-gray-100">
                         {item.image && (
                           <img
-                            src={item.image}
+                            src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                             alt={item.name}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = "/images/placeholder.jpg";
+                            }}
                             className="w-10 h-10 rounded-lg object-cover bg-white shrink-0 border border-gray-100"
                           />
                         )}

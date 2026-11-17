@@ -1,6 +1,7 @@
 import React from "react";
 import { Star, Pencil, Trash2 } from "lucide-react";
 import { ActionButton } from "./AdminMenuComponents";
+import { getImageUrl } from "../../config/api";
 
 export default function AdminFoodTable({
   currentFoods,
@@ -50,7 +51,7 @@ export default function AdminFoodTable({
                     />
                     <div className="w-14 h-14 rounded-xl bg-gray-100 overflow-hidden shrink-0 border border-slate-200/80">
                       <img
-                        src={food.image || "/images/placeholder.jpg"}
+                        src={getImageUrl(food.image) || "/images/placeholder.jpg"}
                         alt={food.name}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -192,7 +193,7 @@ export default function AdminFoodTable({
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-11 h-11 rounded-lg bg-gray-100 overflow-hidden shrink-0">
                     <img
-                      src={food.image || "/images/placeholder.jpg"}
+                      src={getImageUrl(food.image) || "/images/placeholder.jpg"}
                       alt={food.name}
                       onError={(e) => {
                         e.currentTarget.onerror = null;

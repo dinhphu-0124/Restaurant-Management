@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, Sparkles, Flame, Crown, Heart, Clock, Zap, Award } from "lucide-react";
 import RatingStars from "./RatingStars";
 import AppBadge from "./ui/AppBadge";
+import { getImageUrl } from "../config/api";
 
 function getBadgeIcon(badge) {
   const b = String(badge || "").toLowerCase();
@@ -58,7 +59,7 @@ function DishCard({ dish, onOpenDetail, onAddToCart }) {
       {/* Dish Thumbnail (Ở trên cùng) */}
       <div className="w-full aspect-[4/3] overflow-hidden bg-slate-100 relative shrink-0">
         <img
-          src={dish.image || "/images/placeholder.jpg"}
+          src={getImageUrl(dish.image) || "/images/placeholder.jpg"}
           alt={dish.name}
           loading="lazy"
           onError={(e) => {
@@ -108,11 +109,7 @@ function DishCard({ dish, onOpenDetail, onAddToCart }) {
             aria-label={`Thêm ${dish.name} vào giỏ hàng`}
             onClick={(e) => {
               e.stopPropagation();
-              if (dish.hasMultiplePrices || (dish.priceOptions && dish.priceOptions.length > 1)) {
-                onOpenDetail?.(dish);
-              } else {
-                onAddToCart?.(dish, 1, e);
-              }
+              onAddToCart?.(dish, 1, e);
             }}
             disabled={isPaused}
             className={`w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-lg sm:rounded-xl flex items-center justify-center transition-all duration-200 shadow-sm shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${

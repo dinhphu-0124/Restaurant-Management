@@ -1256,7 +1256,7 @@ export function DealStatCard({ icon, title, value, bg, color, note = "so với t
         </p>
 
         {/* Row 2: Số tiền, thông số */}
-        <h3 className="text-[20px] sm:text-[22px] font-black text-green-955 mt-1 leading-none truncate">
+        <h3 className="text-[20px] sm:text-[22px] font-black text-slate-900 mt-1 leading-none truncate">
           {value}
         </h3>
 
@@ -1308,12 +1308,13 @@ export function SelectBox({ label, value, onChange, children, compact = false })
   );
 }
 
-export function IconButton({ icon, color, onClick, disabled = false, title = "" }) {
+export function IconButton({ icon, color, onClick, disabled = false, title = "", "aria-label": ariaLabel }) {
   const colors = {
     green: "bg-green-50 text-green-700 hover:bg-green-100",
     emerald: "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
     orange: "bg-orange-50 text-orange-600 hover:bg-orange-100",
     red: "bg-red-50 text-red-600 hover:bg-red-100",
+    blue: "bg-blue-50 text-blue-700 hover:bg-blue-100",
   };
 
   return (
@@ -1321,8 +1322,9 @@ export function IconButton({ icon, color, onClick, disabled = false, title = "" 
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel || title}
       className={`w-8 h-8 rounded-lg flex items-center justify-center hover:scale-105 transition-all ${
-        disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" : colors[color]
+        disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" : colors[color] || colors.green
       }`}
     >
       {icon}

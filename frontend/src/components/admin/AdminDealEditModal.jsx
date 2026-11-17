@@ -15,6 +15,7 @@ import {
   Clock,
   Sparkles,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import {
   InputField,
@@ -232,12 +233,19 @@ export default function AdminDealEditModal({
                     required
                     type="date"
                     icon={<Calendar size={13} />}
-                    error={formErrors.endDate}
+                    error={formErrors.endDate || (form.startDate && form.endDate && new Date(`${String(form.startDate).slice(0, 10)}T00:00:00+07:00`) > new Date(`${String(form.endDate).slice(0, 10)}T23:59:59.999+07:00`))}
                     value={form.endDate}
                     onChange={(value) =>
                       setForm((prev) => ({ ...prev, endDate: value }))
                     }
                   />
+
+                  {form.startDate && form.endDate && new Date(`${String(form.startDate).slice(0, 10)}T00:00:00+07:00`) > new Date(`${String(form.endDate).slice(0, 10)}T23:59:59.999+07:00`) && (
+                    <div className="sm:col-span-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs font-bold flex items-center gap-1.5 animate-in fade-in">
+                      <AlertCircle size={14} className="shrink-0" />
+                      <span>Ngày kết thúc không được nhỏ hơn ngày bắt đầu.</span>
+                    </div>
+                  )}
 
                   <SelectField
                     label="Trạng thái áp dụng"

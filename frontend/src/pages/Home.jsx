@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { spaceService } from "../services/spaceService";
-import { BACKEND_URL, API_BASE_URL } from "../config/api";
+import { BACKEND_URL, API_BASE_URL, getImageUrl } from "../config/api";
+import { flyToCartAnimation } from "../utils/cartAnimation";
+import SEO from "../components/common/SEO";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
 import SpacePreviewModal from "../components/home/SpacePreviewModal";
@@ -78,6 +80,52 @@ function Home() {
   const navigate = useNavigate();
   const heroImages = [hero1, hero2, hero3, hero4];
 
+  const restaurantSchema = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    "@id": "https://dehuongson.vercel.app/#restaurant",
+    name: "Nhà Hàng Dê Hương Sơn",
+    alternateName: "Đặc Sản Dê Núi Hương Sơn Hà Nội",
+    description:
+      "Nhà Hàng Dê Hương Sơn tại Đường Vũ Lăng, Thanh Trì, Hà Nội phục vụ đặc sản dê núi tươi ngon chuẩn vị: dê hấp tía tô, lẩu dê, dê nướng tảng.",
+    image: "https://dehuongson.vercel.app/og-image.png",
+    url: "https://dehuongson.vercel.app/",
+    telephone: "+84387136878",
+    priceRange: "$$",
+    servesCuisine: ["Đặc sản Dê núi", "Ẩm thực Việt Nam", "Lẩu Dê"],
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: "Đường Vũ Lăng",
+      addressLocality: "Huyện Thanh Trì",
+      addressRegion: "Hà Nội",
+      addressCountry: "VN",
+    },
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: 20.9375901,
+      longitude: 105.8508942,
+    },
+    hasMap: "https://maps.app.goo.gl/gLGw7WKaMWxbM4Qa9",
+    openingHoursSpecification: [
+      {
+        "@type": "OpeningHoursSpecification",
+        dayOfWeek: [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ],
+        opens: "08:00",
+        closes: "22:00",
+      },
+    ],
+    menu: "https://dehuongson.vercel.app/menu",
+    acceptsReservations: "True",
+  };
+
   const [currentHero, setCurrentHero] = useState(0);
 
   const location = useLocation();
@@ -103,11 +151,12 @@ function Home() {
     return Number(String(price || "").replace(/[^\d]/g, ""));
   };
 
-  const addToCart = (dish) => {
+  const addToCart = (dish, qty = 1, event = null) => {
     if (!isLoggedIn) {
       setShowLoginModal(true);
       return;
     }
+
     const cartDish = {
       id: dish.id,
       name: dish.name,
@@ -118,23 +167,28 @@ function Home() {
       tag: dish.tag || dish.badge || "",
     };
 
-    const existed = cartItems.find((item) => item.id === cartDish.id);
+    const commitAddToCart = () => {
+      setCartItems((prev) => {
+        const existed = prev.find((item) => item.id === cartDish.id);
+        const newCart = existed
+          ? prev.map((item) =>
+            item.id === cartDish.id ? { ...item, qty: item.qty + 1 } : item,
+          )
+          : [...prev, cartDish];
 
-    const newCart = existed
-      ? cartItems.map((item) =>
-        item.id === cartDish.id ? { ...item, qty: item.qty + 1 } : item,
-      )
-      : [...cartItems, cartDish];
+        localStorage.setItem("cartItems", JSON.stringify(newCart));
+        window.dispatchEvent(new Event("cartUpdated"));
+        return newCart;
+      });
 
-    setCartItems(newCart);
-    localStorage.setItem("cartItems", JSON.stringify(newCart));
-    window.dispatchEvent(new Event("cartUpdated"));
+      setToast({ dishName: dish.name });
 
-    setToast({ dishName: dish.name });
+      setTimeout(() => {
+        setToast(null);
+      }, 4000);
+    };
 
-    setTimeout(() => {
-      setToast(null);
-    }, 4000);
+    flyToCartAnimation(event, dish.image, commitAddToCart);
   };
 
   const [dishSlide, setDishSlide] = useState(0);
@@ -253,24 +307,6 @@ function Home() {
           setShowSpaceModal(false);
         }
       }
-
-      if (!previewImage) return;
-
-      if (e.key === "ArrowLeft") {
-        const newIndex =
-          previewIndex === 0 ? activeSpace.images.length - 1 : previewIndex - 1;
-
-        setPreviewIndex(newIndex);
-        setPreviewImage(getImgUrl(activeSpace.images[newIndex]));
-      }
-
-      if (e.key === "ArrowRight") {
-        const newIndex =
-          previewIndex === activeSpace.images.length - 1 ? 0 : previewIndex + 1;
-
-        setPreviewIndex(newIndex);
-        setPreviewImage(getImgUrl(activeSpace.images[newIndex]));
-      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -278,7 +314,7 @@ function Home() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [previewImage, previewIndex, activeSpace, showSpaceModal]);
+  }, [previewImage, showSpaceModal]);
   const fallbackDishes = [
     { id: "fb-1", name: "Dê Nướng Tảng", price: 280000, image: deNuongTang, badge: "Đặc sản" },
     { id: "fb-2", name: "Lẩu Dê Hương Sơn", price: 350000, image: lauDe, badge: "Đặc sản" },
@@ -418,7 +454,7 @@ function Home() {
   });
 
   return (
-    <div className="min-h-screen bg-[#fbf7ec] text-green-950">
+    <div className="min-h-screen bg-[#fbf7ec] text-green-950 overflow-x-hidden w-full max-w-full">
       {/* SƯƠNG MỜ */}
       <div className="fog fog-1"></div>
       <div className="fog fog-2"></div>
@@ -462,6 +498,14 @@ function Home() {
         </div>
       )}
 
+      {/* SEO & Structured Data */}
+      <SEO
+        title="Nhà Hàng Dê Hương Sơn | Đặc Sản Dê Núi Hương Sơn - Hà Nội"
+        description="Nhà Hàng Dê Hương Sơn tại Đường Vũ Lăng, Thanh Trì, Hà Nội phục vụ đặc sản dê núi tươi ngon chuẩn vị: dê hấp tía tô, lẩu dê, dê nướng tảng. Đặt bàn nhận ngay ưu đãi!"
+        canonical="/"
+        schema={restaurantSchema}
+      />
+
       {/* HERO SECTION */}
       <section className="relative w-full aspect-[16/9] overflow-hidden bg-[#fbf7ec] select-none">
         {/* BACKGROUND SLIDER */}
@@ -469,10 +513,10 @@ function Home() {
           <img
             key={image}
             src={image}
-            alt="Dê Hương Sơn"
+            alt="Món ngon đặc sản dê núi Hương Sơn tại nhà hàng Dê Hương Sơn Hà Nội"
             className={`absolute inset-0 w-full h-full object-cover transition-all duration-[2000ms] ease-in-out ${index === currentHero
-                ? "opacity-100 scale-100"
-                : "opacity-0 scale-100"
+              ? "opacity-100 scale-100"
+              : "opacity-0 scale-100"
               }`}
           />
         ))}
@@ -505,19 +549,19 @@ function Home() {
               Đặc sản
             </p>
 
-            <h2 className="text-sm sm:text-2xl md:text-3xl lg:text-5xl xl:text-6xl font-black text-[#145c30] uppercase leading-tight mt-0.5 sm:mt-1 drop-shadow-2xs">
+            <h1 className="text-sm sm:text-2xl md:text-3xl lg:text-5xl xl:text-6xl font-black text-[#145c30] uppercase leading-tight mt-0.5 sm:mt-1 drop-shadow-2xs">
               Dê Hương Sơn
-            </h2>
+            </h1>
 
-            <h3 className="text-[10.5px] sm:text-sm md:text-lg lg:text-2xl xl:text-3xl font-bold text-[#145c30] tracking-[0.1em] sm:tracking-[0.2em] lg:tracking-[0.25em] mt-0.5">
+            <h2 className="text-[10.5px] sm:text-sm md:text-lg lg:text-2xl xl:text-3xl font-bold text-[#145c30] tracking-[0.1em] sm:tracking-[0.2em] lg:tracking-[0.25em] mt-0.5">
               Hà Tĩnh
-            </h3>
+            </h2>
 
             <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 lg:gap-4 my-1 sm:my-2 lg:my-3.5">
               <div className="w-5 sm:w-12 md:w-18 lg:w-24 h-px bg-green-700/80"></div>
               <img
                 src={goatIcon}
-                alt="Dê Hương Sơn"
+                alt="Biểu tượng Nhà Hàng Dê Núi Hương Sơn"
                 className="w-4 h-4 sm:w-5 sm:h-5 md:w-8 md:h-8 lg:w-10 lg:h-10 object-contain"
               />
               <div className="w-5 sm:w-12 md:w-18 lg:w-24 h-px bg-green-700/80"></div>
@@ -600,8 +644,12 @@ function Home() {
                 )}
 
                 <img
-                  src={dish.image}
+                  src={getImageUrl(dish.image) || "/images/placeholder.jpg"}
                   alt={dish.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/images/placeholder.jpg";
+                  }}
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                 />
               </div>
@@ -621,7 +669,7 @@ function Home() {
                 </div>
 
                 <button
-                  onClick={() => addToCart(dish)}
+                  onClick={(e) => addToCart(dish, 1, e)}
                   className="w-full bg-emerald-50 text-emerald-800 rounded-lg sm:rounded-xl py-1.5 sm:py-2.5 text-[11px] sm:text-sm md:text-base font-bold hover:bg-emerald-700 hover:text-white transition-all shadow-2xs active:scale-95 flex items-center justify-center gap-1 sm:gap-2 border border-emerald-100 hover:border-emerald-700"
                 >
                   <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -641,8 +689,8 @@ function Home() {
                 onClick={() => setDishSlide(index)}
                 aria-label={`Slide ${index + 1}`}
                 className={`h-2 rounded-full transition-all duration-300 ${dishSlide === index
-                    ? "w-7 sm:w-8 bg-emerald-800"
-                    : "w-2 bg-gray-300 hover:bg-emerald-300"
+                  ? "w-7 sm:w-8 bg-emerald-800"
+                  : "w-2 bg-gray-300 hover:bg-emerald-300"
                   }`}
               />
             ))}
@@ -719,14 +767,14 @@ function Home() {
         </div>
       </section>
       {/* PROMO + SPACE + REVIEWS */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-5 pb-10 sm:pb-12">
-        <div className="grid lg:grid-cols-3 gap-5 sm:gap-6">
-          <div className="flex flex-col gap-3 sm:gap-3.5">
+      <section className="max-w-7xl mx-auto px-3.5 sm:px-5 pb-10 sm:pb-12 w-full overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 w-full min-w-0">
+          <div className="flex flex-col gap-3 sm:gap-3.5 w-full min-w-0">
             {/* Header */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <Flame className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-800 fill-emerald-800/20 shrink-0" />
-                <h2 className="text-base sm:text-lg md:text-xl font-black uppercase text-emerald-950 tracking-tight">
+                <h2 className="text-[clamp(13px,3.8vw,1.25rem)] font-black uppercase text-emerald-950 tracking-tight whitespace-nowrap">
                   Ưu đãi đặc biệt
                 </h2>
               </div>
@@ -740,37 +788,34 @@ function Home() {
             </div>
 
             {/* Filter Tabs: Tất cả | Đang diễn ra | Sắp diễn ra */}
-            <div className="flex items-center gap-1.5 sm:gap-2 px-1 overflow-x-auto no-scrollbar py-0.5">
+            <div className="flex items-center gap-1.5 sm:gap-2 px-0.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
               <button
                 type="button"
                 onClick={() => setPromoTab("all")}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                  promoTab === "all"
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${promoTab === "all"
                     ? "bg-[#0d6b38] text-white shadow-xs"
                     : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
-                }`}
+                  }`}
               >
                 Tất cả
               </button>
               <button
                 type="button"
                 onClick={() => setPromoTab("ongoing")}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                  promoTab === "ongoing"
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${promoTab === "ongoing"
                     ? "bg-[#0d6b38] text-white shadow-xs"
                     : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
-                }`}
+                  }`}
               >
                 Đang diễn ra
               </button>
               <button
                 type="button"
                 onClick={() => setPromoTab("upcoming")}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                  promoTab === "upcoming"
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${promoTab === "upcoming"
                     ? "bg-[#0d6b38] text-white shadow-xs"
                     : "bg-white/80 hover:bg-emerald-50 text-emerald-950 border border-[#eadfcd]"
-                }`}
+                  }`}
               >
                 Sắp diễn ra
               </button>
@@ -788,7 +833,7 @@ function Home() {
                 .
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3 sm:gap-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3 sm:gap-3.5 w-full min-w-0">
                 {filteredPromos.slice(0, 2).map((promo) => (
                   <Promo
                     key={promo.id}
@@ -801,15 +846,15 @@ function Home() {
             )}
 
             {/* Bottom Discover Banner: Only on Mobile / Tablet */}
-            <div className="block lg:hidden mt-1">
+            <div className="block lg:hidden mt-1 w-full min-w-0">
               <PromoBanner onClick={() => navigate("/deals")} />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md flex flex-col justify-between border border-[#eadfcd]/50">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-md flex flex-col justify-between border border-[#eadfcd]/50 w-full min-w-0">
             <div>
               <div className="flex items-center justify-between mb-4 sm:mb-5">
-                <h2 className="text-lg sm:text-xl font-black uppercase text-[#145c30]">
+                <h2 className="text-[clamp(13px,3.8vw,1.25rem)] font-black uppercase text-[#145c30] tracking-tight whitespace-nowrap">
                   Không gian nhà hàng
                 </h2>
               </div>
@@ -901,8 +946,8 @@ function Home() {
             </button>
           </div>
 
-          <div className="bg-[#fffaf0] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md border border-[#eadfcd]/50">
-            <h2 className="text-lg sm:text-xl font-black uppercase mb-3 sm:mb-5 text-[#145c30]">
+          <div className="bg-[#fffaf0] rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-md border border-[#eadfcd]/50 w-full min-w-0">
+            <h2 className="text-[clamp(13px,3.8vw,1.25rem)] font-black uppercase mb-3 sm:mb-5 text-[#145c30] tracking-tight whitespace-nowrap">
               Khách hàng nói về chúng tôi
             </h2>
 
@@ -922,8 +967,8 @@ function Home() {
         </div>
       </section>
       {/* SERVICE BAR */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-5 pb-10">
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md grid grid-cols-2 lg:grid-cols-4 overflow-hidden border border-[#eadfcd]/50">
+      <section className="max-w-7xl mx-auto px-3.5 sm:px-5 pb-10 w-full overflow-hidden">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-md grid grid-cols-2 lg:grid-cols-4 overflow-hidden border border-[#eadfcd]/50 w-full min-w-0">
           <Service
             icon={<ChefHat className="w-5 h-5 sm:w-6 sm:h-6" />}
             title="100% dê núi Hương Sơn"
@@ -966,7 +1011,7 @@ function Home() {
       {showLoginModal && (
         <LoginRequiredModal
           onClose={() => setShowLoginModal(false)}
-          onLogin={() => navigate("/login")}
+          onLogin={() => navigate("/login", { state: { from: "/home" } })}
         />
       )}
     </div>

@@ -18,22 +18,54 @@ const removeAuthData = () => {
   sessionStorage.removeItem("isLoggedIn");
 };
 
+export const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(""),
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (parsed && typeof parsed.exp === "number") {
+      return Date.now() >= parsed.exp * 1000 - 5000;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 export const getAuthToken = () => {
   const localToken = localStorage.getItem("authToken");
   const sessionToken = sessionStorage.getItem("authToken");
 
+  let token = "";
   if (localToken && localToken !== "undefined" && localToken !== "null") {
-    return localToken;
+    token = localToken;
+  } else if (sessionToken && sessionToken !== "undefined" && sessionToken !== "null") {
+    token = sessionToken;
   }
 
-  if (sessionToken && sessionToken !== "undefined" && sessionToken !== "null") {
-    return sessionToken;
+  if (token && isTokenExpired(token)) {
+    removeAuthData();
+    window.dispatchEvent(new Event("loginStatusChanged"));
+    return "";
   }
 
-  return "";
+  return token;
 };
 
 export const getCurrentUser = () => {
+  const token = getAuthToken();
+  if (!token) {
+    return null;
+  }
+
   const localUser = safeParseUser(localStorage.getItem("currentUser"));
   const sessionUser = safeParseUser(sessionStorage.getItem("currentUser"));
 

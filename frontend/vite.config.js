@@ -22,5 +22,11 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
       "Cross-Origin-Embedder-Policy": "unsafe-none",
     },
+    proxy: {
+      "/uploads": {
+        target: "http://localhost:5001",
+        changeOrigin: true,
+      },
+    },
   },
 });

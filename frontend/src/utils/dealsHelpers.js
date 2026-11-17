@@ -73,18 +73,148 @@ export const formatDateDeal = (value) => {
   return `${day}/${month}/${year}`;
 };
 
-export const getStatusTextDeal = (status) => {
-  if (status === "active") return "Đang áp dụng";
-  if (status === "upcoming") return "Sắp diễn ra";
-  if (status === "paused") return "Tạm dừng";
+export const parseVNBoundaryDates = (startDateStr, endDateStr) => {
+  if (!startDateStr || !endDateStr) return { start: null, end: null, isValid: false };
+  const sMatch = String(startDateStr).slice(0, 10);
+  const eMatch = String(endDateStr).slice(0, 10);
+  const start = new Date(`${sMatch}T00:00:00+07:00`);
+  const end = new Date(`${eMatch}T23:59:59.999+07:00`);
+  const isValid = !isNaN(start.getTime()) && !isNaN(end.getTime()) && start <= end;
+  return { start, end, isValid, sMatch, eMatch };
+};
+
+export const getDealLifecycle = (deal = {}, now = new Date()) => {
+  if (!deal) {
+    return {
+      key: "invalid",
+      label: "Dữ liệu không hợp lệ",
+      badgeClass: "bg-rose-50 text-rose-700 border border-rose-200",
+      isUsable: false,
+      canPause: false,
+      canClone: true,
+      warningText: null,
+    };
+  }
+
+  // 1. Kiểm tra ngày hợp lệ (Ưu tiên số 1: Dữ liệu không hợp lệ)
+  const { start, end, isValid } = parseVNBoundaryDates(deal.startDate || deal.start_date, deal.endDate || deal.end_date);
+  if (!isValid) {
+    return {
+      key: "invalid",
+      label: "Dữ liệu không hợp lệ",
+      badgeClass: "bg-rose-50 text-rose-700 border border-rose-200",
+      isUsable: false,
+      canPause: false,
+      canClone: true,
+      warningText: "Ngày kết thúc trước ngày bắt đầu",
+    };
+  }
+
+  // 2. Đã hủy
+  if (deal.status === "cancelled") {
+    return {
+      key: "cancelled",
+      label: "Đã hủy",
+      badgeClass: "bg-red-50 text-red-600 border border-red-200",
+      isUsable: false,
+      canPause: false,
+      canClone: true,
+      warningText: null,
+    };
+  }
+
+  // 3. Tạm dừng chủ động
+  if (deal.status === "paused") {
+    const isPast = now > end;
+    return {
+      key: "paused",
+      label: "Tạm dừng",
+      badgeClass: "bg-orange-50 text-orange-700 border border-orange-200",
+      isUsable: false,
+      canPause: true,
+      canClone: true,
+      warningText: isPast ? "Đã qua ngày kết thúc" : null,
+    };
+  }
+
+  // 4. Chưa bắt đầu (Sắp diễn ra)
+  if (now < start) {
+    return {
+      key: "upcoming",
+      label: "Sắp diễn ra",
+      badgeClass: "bg-sky-50 text-sky-700 border border-sky-200",
+      isUsable: false,
+      canPause: true,
+      canClone: true,
+      warningText: null,
+    };
+  }
+
+  // 5. Đã hết hạn
+  if (now > end || deal.status === "ended" || deal.status === "expired") {
+    return {
+      key: "expired",
+      label: "Đã hết hạn",
+      badgeClass: "bg-slate-100 text-slate-600 border border-slate-200",
+      isUsable: false,
+      canPause: false,
+      canClone: true,
+      warningText: null,
+    };
+  }
+
+  // 6. Sắp hết hạn (<= 24 giờ trước thời điểm kết thúc 23:59:59 của endDate)
+  const remainingMs = end.getTime() - now.getTime();
+  if (remainingMs <= 24 * 3600 * 1000 && remainingMs > 0) {
+    const remainingHours = Math.max(1, Math.ceil(remainingMs / (3600 * 1000)));
+    return {
+      key: "expiring_soon",
+      label: "Sắp hết hạn",
+      badgeClass: "bg-amber-50 text-amber-700 border border-amber-200",
+      isUsable: true,
+      canPause: true,
+      canClone: true,
+      remainingHours,
+      warningText: `Còn ${remainingHours} giờ`,
+    };
+  }
+
+  // 7. Đang áp dụng hợp lệ
+  return {
+    key: "active",
+    label: "Đang áp dụng",
+    badgeClass: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    isUsable: true,
+    canPause: true,
+    canClone: true,
+    warningText: null,
+  };
+};
+
+export const getStatusTextDeal = (param) => {
+  if (param && typeof param === "object") {
+    return getDealLifecycle(param).label;
+  }
+  if (param === "active") return "Đang áp dụng";
+  if (param === "upcoming") return "Sắp diễn ra";
+  if (param === "expiring_soon") return "Sắp hết hạn";
+  if (param === "paused") return "Tạm dừng";
+  if (param === "cancelled") return "Đã hủy";
+  if (param === "invalid") return "Dữ liệu không hợp lệ";
   return "Đã kết thúc";
 };
 
-export const getStatusStyleDeal = (status) => {
-  if (status === "active") return "bg-green-50 text-green-700";
-  if (status === "upcoming") return "bg-orange-50 text-orange-600";
-  if (status === "paused") return "bg-gray-100 text-gray-600";
-  return "bg-slate-100 text-slate-500";
+export const getStatusStyleDeal = (param) => {
+  if (param && typeof param === "object") {
+    return getDealLifecycle(param).badgeClass;
+  }
+  if (param === "active") return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  if (param === "upcoming") return "bg-sky-50 text-sky-700 border border-sky-200";
+  if (param === "expiring_soon") return "bg-amber-50 text-amber-700 border border-amber-200";
+  if (param === "paused") return "bg-orange-50 text-orange-700 border border-orange-200";
+  if (param === "cancelled") return "bg-red-50 text-red-600 border border-red-200";
+  if (param === "invalid") return "bg-rose-50 text-rose-700 border border-rose-200";
+  return "bg-slate-100 text-slate-600 border border-slate-200";
 };
 
 export const getTypeStyleDeal = (type) => {

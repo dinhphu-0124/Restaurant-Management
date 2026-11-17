@@ -1,5 +1,6 @@
 import React from "react";
 import { X, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { getImageUrl } from "../../config/api";
 
 export function Service({ icon, title, text }) {
   return (
@@ -56,8 +57,12 @@ export default function CartModals({
               <div>
                 <div className="rounded-3xl overflow-hidden h-48 md:h-[250px] bg-gray-100">
                   <img
-                    src={selectedDish.image}
+                    src={getImageUrl(selectedDish.image) || "/images/placeholder.jpg"}
                     alt={selectedDish.name}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/images/placeholder.jpg";
+                    }}
                     className="w-full h-full object-cover"
                   />
                 </div>

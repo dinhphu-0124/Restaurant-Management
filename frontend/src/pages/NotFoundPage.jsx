@@ -1,10 +1,12 @@
 import { Link } from "react-router-dom";
 import { Home, ArrowLeft } from "lucide-react";
 import goatIcon from "../assets/images/Icon_De.png";
+import SEO from "../components/common/SEO";
 
 function NotFoundPage() {
   return (
     <div className="min-h-screen bg-[#fbfcf0] flex items-center justify-center px-4 py-12">
+      <SEO title="404 - Không Tìm Thấy Trang" noindex={true} />
       <div className="w-full max-w-6xl text-center -translate-y-12">
         {/* 404 */}
         <div className="flex items-center justify-center leading-none select-none mb-3 drop-shadow-[0_8px_20px_rgba(0,0,0,0.08)]">

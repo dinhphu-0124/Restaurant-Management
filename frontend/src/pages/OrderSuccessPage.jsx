@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { CheckCircle, Home, ClipboardList, ReceiptText } from "lucide-react";
+import SEO from "../components/common/SEO";
 
 function OrderSuccessPage() {
   const order = JSON.parse(localStorage.getItem("currentOrder")) || {};
@@ -48,6 +49,7 @@ function OrderSuccessPage() {
 
   return (
     <div className="min-h-screen bg-[#fbf7ec] flex items-center justify-center px-4 py-8">
+      <SEO title="Đặt Món Thành Công" noindex={true} />
       <div className="bg-white border border-[#eadfcd] rounded-[32px] p-6 md:p-8 max-w-2xl w-full text-center shadow-xl">
         <div className="w-24 h-24 rounded-full bg-green-50 flex items-center justify-center mx-auto">
           <CheckCircle className="w-16 h-16 text-green-800" />

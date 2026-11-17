@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { socket } from "../utils/socket";
 import { showAdminToast } from "../components/admin/AdminToast";
+import { getImageUrl } from "../config/api";
+import SEO from "../components/common/SEO";
 import {
   ArrowLeft,
   ReceiptText,
@@ -409,6 +411,7 @@ function OrderDetailPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/60 py-6 md:py-8 text-slate-800">
+      <SEO title="Chi Tiết Đơn Hàng" noindex={true} />
       <div className="max-w-7xl mx-auto px-5 space-y-6">
         {/* Navigation Breadcrumb */}
         <div>
@@ -512,8 +515,12 @@ function OrderDetailPage() {
                       >
                         <div className="flex items-center gap-3.5 min-w-0 flex-1">
                           <img
-                            src={item.image || "/images/placeholder.jpg"}
+                            src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                             alt={item.name}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = "/images/placeholder.jpg";
+                            }}
                             className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover bg-slate-100 border border-slate-100 shrink-0"
                           />
                           <div className="min-w-0 flex-1">
@@ -815,8 +822,12 @@ function OrderDetailPage() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-3 min-w-0">
                 <img
-                  src={reviewItem.image || "/images/placeholder.jpg"}
+                  src={getImageUrl(reviewItem.image) || "/images/placeholder.jpg"}
                   alt={reviewItem.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/images/placeholder.jpg";
+                  }}
                   className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                 />
                 <div className="min-w-0">

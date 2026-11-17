@@ -18,11 +18,17 @@ async function handleResponse(res) {
   try {
     data = await res.json();
   } catch {
-    throw new Error("Server không trả về dữ liệu hợp lệ.");
+    const error = new Error("Server không trả về dữ liệu hợp lệ.");
+    error.status = res.status;
+    throw error;
   }
 
   if (!res.ok || !data.success) {
-    throw new Error(data.message || "Có lỗi xảy ra.");
+    const error = new Error(data.message || "Có lỗi xảy ra.");
+    error.status = res.status;
+    error.code = data.code;
+    error.data = data;
+    throw error;
   }
 
   return data;

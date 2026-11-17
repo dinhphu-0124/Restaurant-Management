@@ -20,6 +20,7 @@ import {
 
 import { clearAuthSession } from "../utils/auth";
 import { getMe, updateMe } from "../services/userService";
+import SEO from "../components/common/SEO";
 import {
   OrderHistoryContent,
   BookingHistoryContent,
@@ -285,6 +286,7 @@ function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
+      <SEO title="Thông Tin Tài Khoản" noindex={true} />
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-20 right-5 z-[9999] bg-white border border-emerald-200 shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 w-[340px] animate-slide-up">

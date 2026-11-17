@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import SEO from "../components/common/SEO";
 import {
   CheckCircle,
   Landmark,
@@ -397,6 +398,7 @@ function PaymentQRPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
+      <SEO title="Thanh Toán Trực Tuyến QR" noindex={true} />
       <div className="max-w-[1400px] mx-auto">
         <button
           type="button"

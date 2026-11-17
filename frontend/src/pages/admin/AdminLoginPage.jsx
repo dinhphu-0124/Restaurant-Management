@@ -4,6 +4,7 @@ import { ShieldCheck, User, Lock } from "lucide-react";
 
 import { loginUser } from "../../services/authService";
 import { saveAuthSession } from "../../utils/auth";
+import SEO from "../../components/common/SEO";
 
 function AdminLoginPage() {
   const navigate = useNavigate();
@@ -74,6 +75,7 @@ function AdminLoginPage() {
 
   return (
     <div className="min-h-screen bg-[#f5f7ed] flex items-center justify-center px-4">
+      <SEO title="Đăng Nhập Quản Trị Viên" noindex={true} />
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
         <div className="flex justify-center mb-5">
           <div className="w-16 h-16 rounded-2xl bg-primary text-secondary flex items-center justify-center shadow-lg">

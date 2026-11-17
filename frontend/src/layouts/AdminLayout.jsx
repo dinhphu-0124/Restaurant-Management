@@ -8,6 +8,7 @@ import { getCurrentUser, getAuthToken } from "../utils/auth";
 import { canUseAction } from "../utils/permissions";
 import { socket } from "../utils/socket";
 import { API_BASE_URL } from "../config/api";
+import SEO from "../components/common/SEO";
 
 function AdminLayout() {
   const location = useLocation();
@@ -215,6 +216,7 @@ function AdminLayout() {
 
   return (
     <div className="h-screen bg-surface-0 flex overflow-hidden font-sans">
+      <SEO title={`Hệ Thống Quản Trị - ${currentPage.title || "Admin"}`} noindex={true} />
       <AdminSidebar
         notifications={notifications}
         isOpen={isMobileSidebarOpen}

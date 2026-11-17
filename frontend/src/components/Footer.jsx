@@ -21,7 +21,7 @@ function Footer() {
               <h3 className="text-sm sm:text-base md:text-sm lg:text-xl font-bold leading-tight whitespace-nowrap text-white">
                 Dê Hương Sơn
               </h3>
-              <p className="text-[10.5px] sm:text-xs text-white/70">Hà Tĩnh</p>
+              <p className="text-[10.5px] sm:text-xs text-white/70">Hà Nội</p>
             </div>
           </Link>
 
@@ -40,7 +40,7 @@ function Footer() {
               <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white shrink-0 mt-0.5" />
 
               <a
-                href="https://maps.app.goo.gl/wSkET5ThBjNm9f29A"
+                href="https://maps.app.goo.gl/gLGw7WKaMWxbM4Qa9"
                 target="_blank"
                 rel="noreferrer"
                 className="hover:text-white transition leading-snug"
@@ -118,15 +118,15 @@ function Footer() {
 
         <div className="col-span-2 sm:col-span-2 md:col-span-4 lg:col-span-1">
           <a
-            href="https://maps.app.goo.gl/wSkET5ThBjNm9f29A"
+            href="https://maps.app.goo.gl/gLGw7WKaMWxbM4Qa9"
             target="_blank"
             rel="noreferrer"
-            aria-label="Xem bản đồ Dê Hương Sơn"
+            aria-label="Xem bản đồ Dê Hương Sơn trên Google Maps"
             className="block overflow-hidden rounded-xl sm:rounded-2xl border border-white/10 h-28 sm:h-36 md:h-32 lg:h-36 group relative shadow-md"
           >
             <iframe
               title="Bản đồ Dê Hương Sơn"
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3939.8604880385988!2d105.84806467548728!3d20.937626480689012!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135ad9f6221f4b3%3A0x23e41af49c85fe1a!2zTmjDoCBow6BuZyBC4bqjbyBMb25nIC0gRMOqIE7DumkgSMawxqFuZyBTxqFu!5e1!3m2!1svi!2s!4v1781164163918!5m2!1svi!2s"
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3939.86!2d105.8508942!3d20.9375901!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135adb3c75f1b6f%3A0xfc1de8a9bffb75e1!2zTmjDoCBow6BuZyBC4bqjbyBMb25n!5e1!3m2!1svi!2s"
               className="w-full h-full border-0 pointer-events-none group-hover:scale-105 transition-transform duration-300"
               loading="lazy"
             />
@@ -135,7 +135,7 @@ function Footer() {
       </div>
 
       <div className="border-t border-white/15 text-center py-3 text-xs md:text-sm text-white/60">
-        © 2026 Dê Hương Sơn Hà Tĩnh. All rights reserved.
+        © 2026 Nhà Hàng Dê Hương Sơn - Đặc Sản Dê Núi Hà Nội. All rights reserved.
       </div>
     </footer>
   );

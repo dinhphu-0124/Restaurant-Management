@@ -1,6 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { DetailBlock, DetailRow } from "./AdminMenuComponents";
+import { getImageUrl } from "../../config/api";
 
 export default function AdminFoodDetailModal({
   selectedFood,
@@ -51,7 +52,7 @@ export default function AdminFoodDetailModal({
         <div className="space-y-2">
           <div className="relative rounded-xl overflow-hidden bg-gray-100 h-[160px] 2xl:h-[180px]">
             <img
-              src={currentImage}
+              src={getImageUrl(currentImage) || "/images/placeholder.jpg"}
               alt={selectedFood.name}
               onError={(e) => {
                 e.currentTarget.onerror = null;
@@ -80,8 +81,12 @@ export default function AdminFoodDetailModal({
                   }`}
                 >
                   <img
-                    src={img}
+                    src={getImageUrl(img) || "/images/placeholder.jpg"}
                     alt=""
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/src/assets/images/Menu/default-food.png";
+                    }}
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.currentTarget.onerror = null;

@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Allura&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
@@ -41,6 +42,12 @@
   --color-surface: #ffffff;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-serif: 'Playfair Display', 'Cormorant Garamond', Georgia, serif;
+}
+
+html,
+body {
+  overflow-x: clip;
+  max-width: 100vw;
 }
 
 @layer base {
@@ -339,7 +346,7 @@ a:focus:not(:focus-visible) {
 }
 
 .deal-swiper .swiper-wrapper {
-  transition-timing-function: linear !important;
+  transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1) !important;
   will-change: transform;
 }
 
@@ -350,6 +357,7 @@ a:focus:not(:focus-visible) {
 .deal-swiper button {
   pointer-events: auto;
 }
+
 .deal-swiper .swiper-button-prev,
 .deal-swiper .swiper-button-next {
   width: 38px;
@@ -357,30 +365,144 @@ a:focus:not(:focus-visible) {
   border-radius: 999px;
   background: white;
   color: #064e3b;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(234, 223, 205, 0.85);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.deal-swiper .swiper-button-prev:hover,
+.deal-swiper .swiper-button-next:hover {
+  background: #f6c441;
+  color: #022c22;
+  border-color: #f6c441;
+  transform: scale(1.1);
+  box-shadow: 0 6px 22px rgba(246, 196, 65, 0.4);
 }
 
 .deal-swiper .swiper-button-prev::after,
 .deal-swiper .swiper-button-next::after {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
+}
+
+.deal-swiper .swiper-pagination {
+  position: relative !important;
+  bottom: auto !important;
+  margin-top: 14px !important;
+  margin-bottom: 4px !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
 }
 
 .deal-swiper .swiper-pagination-bullet {
   background: #d6a84f;
-  opacity: 0.4;
+  opacity: 0.35;
+  margin: 0 4px !important;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .deal-swiper .swiper-pagination-bullet-active {
   opacity: 1;
-  width: 22px;
+  width: 24px;
   border-radius: 999px;
+  background: #d6a84f;
 }
 
 @media (max-width: 640px) {
   .deal-swiper .swiper-button-prev,
   .deal-swiper .swiper-button-next {
-    display: none;
+    display: none !important;
+  }
+}
+
+/* Hero Deal Swiper styles */
+.hero-deal-swiper {
+  width: 100%;
+  position: relative;
+}
+
+.hero-deal-swiper .swiper-button-prev,
+.hero-deal-swiper .swiper-button-next {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 30;
+}
+
+.hero-deal-swiper .swiper-button-prev:hover,
+.hero-deal-swiper .swiper-button-next:hover {
+  background: #f6c441;
+  color: #022c22;
+  border-color: #f6c441;
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.hero-deal-swiper .swiper-button-prev::after,
+.hero-deal-swiper .swiper-button-next::after {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.hero-deal-swiper .swiper-pagination {
+  position: absolute !important;
+  bottom: 18px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 30;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: auto !important;
+  padding: 5px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.hero-deal-swiper .swiper-pagination-bullet {
+  width: 7px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 1;
+  margin: 0 !important;
+  border-radius: 999px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-deal-swiper .swiper-pagination-bullet-active {
+  width: 24px;
+  background: #f6c441;
+}
+
+@media (max-width: 640px) {
+  .hero-deal-swiper .swiper-button-prev,
+  .hero-deal-swiper .swiper-button-next {
+    display: none !important;
+  }
+  .hero-deal-swiper .swiper-pagination {
+    bottom: 8px !important;
+    padding: 3px 8px !important;
+    gap: 4px !important;
+  }
+  .hero-deal-swiper .swiper-pagination-bullet {
+    width: 6px;
+    height: 6px;
+  }
+  .hero-deal-swiper .swiper-pagination-bullet-active {
+    width: 18px;
   }
 }
 /* line About */
@@ -491,8 +613,8 @@ a:focus:not(:focus-visible) {
 }
 
 .leaf-float span:nth-child(8) {
-  left: 92%;
-  font-size: 20px;
+  left: 84%;
+  font-size: 18px;
   animation-duration: 21s;
 }
 .leaf-float span:nth-child(9) {
@@ -503,19 +625,19 @@ a:focus:not(:focus-visible) {
 
 .leaf-float span:nth-child(10) {
   left: 63%;
-  font-size: 24px;
+  font-size: 20px;
   animation-duration: 28s;
 }
 
 .leaf-float span:nth-child(11) {
-  left: 76%;
-  font-size: 19px;
+  left: 74%;
+  font-size: 18px;
   animation-duration: 25s;
 }
 
 .leaf-float span:nth-child(12) {
-  left: 88%;
-  font-size: 22px;
+  left: 82%;
+  font-size: 18px;
   animation-duration: 30s;
 }
 
@@ -578,3 +700,60 @@ a:focus:not(:focus-visible) {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #cbd5e1;
 }
+
+/* Subtle micro-animations for status & error states */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bounceSubtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 12s linear infinite;
+}
+
+.animate-bounce-subtle {
+  animation: bounceSubtle 3s ease-in-out infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulseRing 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Ẩn scrollbar nhưng vẫn cho phép cuộn ngang/dọc */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+

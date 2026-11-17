@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { createActivityLog } = require("../utils/activityLog");
 
 const DEFAULT_SERVICE_CONDITION_ITEMS = {
   dinein: [],
@@ -193,6 +194,25 @@ exports.createDeal = async (req, res) => {
       });
     }
 
+    if (!deal.startDate || !deal.endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng chọn ngày bắt đầu và ngày kết thúc.",
+      });
+    }
+
+    const startMatch = String(deal.startDate).slice(0, 10);
+    const endMatch = String(deal.endDate).slice(0, 10);
+    const startObj = new Date(`${startMatch}T00:00:00+07:00`);
+    const endObj = new Date(`${endMatch}T23:59:59.999+07:00`);
+
+    if (isNaN(startObj.getTime()) || isNaN(endObj.getTime()) || startObj > endObj) {
+      return res.status(400).json({
+        success: false,
+        message: "Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu.",
+      });
+    }
+
     const [existedRows] = await db.query(
       `
       SELECT id
@@ -279,9 +299,19 @@ exports.createDeal = async (req, res) => {
       [deal.code],
     );
 
+    const createdDeal = mapDeal(rows[0]);
+    if (req.user?.id) {
+      await createActivityLog({
+        targetUserId: req.user.id,
+        actorUserId: req.user.id,
+        action: "DEAL_CREATE",
+        message: `Tạo chương trình khuyến mãi "${createdDeal.name}" (${createdDeal.code})`,
+      }).catch(() => {});
+    }
+
     res.status(201).json({
       success: true,
-      deal: mapDeal(rows[0]),
+      deal: createdDeal,
     });
   } catch (error) {
     console.error("Lỗi thêm khuyến mãi:", error);
@@ -330,6 +360,20 @@ exports.updateDeal = async (req, res) => {
         success: false,
         message: "Mã khuyến mãi đã tồn tại.",
       });
+    }
+
+    if (deal.startDate && deal.endDate) {
+      const startMatch = String(deal.startDate).slice(0, 10);
+      const endMatch = String(deal.endDate).slice(0, 10);
+      const startObj = new Date(`${startMatch}T00:00:00+07:00`);
+      const endObj = new Date(`${endMatch}T23:59:59.999+07:00`);
+
+      if (isNaN(startObj.getTime()) || isNaN(endObj.getTime()) || startObj > endObj) {
+        return res.status(400).json({
+          success: false,
+          message: "Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu.",
+        });
+      }
     }
 
     await db.query(
@@ -399,9 +443,19 @@ exports.updateDeal = async (req, res) => {
       [id],
     );
 
+    const updatedDeal = mapDeal(rows[0]);
+    if (req.user?.id) {
+      await createActivityLog({
+        targetUserId: req.user.id,
+        actorUserId: req.user.id,
+        action: "DEAL_UPDATE",
+        message: `Cập nhật chương trình khuyến mãi "${updatedDeal.name}" (${updatedDeal.code})`,
+      }).catch(() => {});
+    }
+
     res.json({
       success: true,
-      deal: mapDeal(rows[0]),
+      deal: updatedDeal,
     });
   } catch (error) {
     console.error("Lỗi cập nhật khuyến mãi:", error);
@@ -416,6 +470,42 @@ exports.updateDeal = async (req, res) => {
 exports.deleteDeal = async (req, res) => {
   try {
     const { id } = req.params;
+    const [dealRows] = await db.query(
+      `SELECT id, code, name, used_count FROM deals WHERE id = ? LIMIT 1`,
+      [id],
+    );
+
+    if (dealRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy khuyến mãi.",
+      });
+    }
+
+    const deal = dealRows[0];
+    const usedCount = Number(deal.used_count || 0);
+
+    // Nếu đã có lượt sử dụng thực tế: Archive thay vì Hard Delete để bảo toàn kế toán và báo cáo
+    if (usedCount > 0) {
+      await db.query(
+        `UPDATE deals SET status = 'cancelled', updated_at = NOW() WHERE id = ?`,
+        [id],
+      );
+      if (req.user?.id) {
+        await createActivityLog({
+          targetUserId: req.user.id,
+          actorUserId: req.user.id,
+          action: "DEAL_ARCHIVE",
+          message: `Lưu trữ (hủy) chương trình khuyến mãi "${deal.name}" (${deal.code}) do đã có ${usedCount} lượt sử dụng.`,
+        }).catch(() => {});
+      }
+      return res.json({
+        success: true,
+        archived: true,
+        message: `Chương trình đã có ${usedCount} lượt sử dụng nên được chuyển vào lưu trữ (Đã hủy) để bảo toàn báo cáo doanh thu.`,
+      });
+    }
+
     const [result] = await db.query(
       `
       DELETE FROM deals
@@ -431,8 +521,18 @@ exports.deleteDeal = async (req, res) => {
       });
     }
 
+    if (req.user?.id) {
+      await createActivityLog({
+        targetUserId: req.user.id,
+        actorUserId: req.user.id,
+        action: "DEAL_DELETE",
+        message: `Xóa chương trình khuyến mãi "${deal.name}" (${deal.code})`,
+      }).catch(() => {});
+    }
+
     res.json({
       success: true,
+      message: `Đã xóa khuyến mãi "${deal.name}".`,
     });
   } catch (error) {
     console.error("Lỗi xóa khuyến mãi:", error);

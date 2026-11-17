@@ -4,6 +4,7 @@ import { spaceService } from "../services/spaceService";
 import { socket } from "../utils/socket";
 import SpacePreviewModal from "../components/home/SpacePreviewModal";
 import { BACKEND_URL } from "../config/api";
+import SEO from "../components/common/SEO";
 
 import {
   Leaf,
@@ -263,6 +264,30 @@ function AboutPage() {
         <span>🍂</span>
         <span>🍁</span>
       </div>
+
+      <SEO
+        title="Giới Thiệu Nhà Hàng Dê Hương Sơn | Tinh Hoa Đặc Sản Dê Núi"
+        description="Tìm hiểu câu chuyện thương hiệu Nhà Hàng Dê Hương Sơn - gìn giữ và lan tỏa tinh hoa ẩm thực đặc sản dê núi Hương Sơn tươi ngon tại Hà Nội."
+        canonical="/about"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Trang chủ",
+              item: "https://dehuongson.vercel.app/",
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Giới thiệu",
+              item: "https://dehuongson.vercel.app/about",
+            },
+          ],
+        }}
+      />
 
       {/* HERO */}
       <section

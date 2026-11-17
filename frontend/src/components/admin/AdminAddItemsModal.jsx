@@ -1,5 +1,6 @@
 import React from "react";
 import { X, Search, Plus, Minus, ShoppingBag, ChefHat, Trash2 } from "lucide-react";
+import { getImageUrl } from "../../config/api";
 
 export default function AdminAddItemsModal({
   activeAddItemsBooking,
@@ -125,8 +126,12 @@ export default function AdminAddItemsModal({
                       >
                         <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gray-100 border border-gray-100">
                           <img
-                            src={food.image}
+                            src={getImageUrl(food.image) || "/images/placeholder.jpg"}
                             alt={food.name}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = "/images/placeholder.jpg";
+                            }}
                             className="w-full h-full object-cover"
                           />
                         </div>
@@ -209,7 +214,15 @@ export default function AdminAddItemsModal({
                   <div key={item.id}
                     className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-gray-100 shadow-sm">
                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gray-100 border border-gray-100">
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                      <img
+                        src={getImageUrl(item.image) || "/images/placeholder.jpg"}
+                        alt={item.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/images/placeholder.jpg";
+                        }}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-xs text-gray-900 truncate">{item.name}</p>

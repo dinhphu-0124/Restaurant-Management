@@ -1,14 +1,18 @@
 import { checkLogin } from "../utils/auth";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import SEO from "../components/common/SEO";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
 import DishDetailModal from "../components/DishDetailModal";
+import { flyToCartAnimation } from "../utils/cartAnimation";
 import AppEmptyState from "../components/ui/AppEmptyState";
 import AppButton from "../components/ui/AppButton";
 import AppBadge from "../components/ui/AppBadge";
 import AppModal from "../components/ui/AppModal";
-import { API_BASE_URL } from "../config/api";
+import { API_BASE_URL, getImageUrl } from "../config/api";
+
+import { getDealLifecycle } from "../utils/dealsHelpers";
 
 import {
   ShoppingCart,
@@ -169,6 +173,8 @@ function CartPage() {
       percent: isPercent ? Number(discountText.replace(/[^\d]/g, "")) : 0,
       amount: isPercent ? 0 : parseMoneyFromText(discountText),
       minOrder: parseMoneyFromText(deal.condition),
+      startDate: deal.startDate,
+      endDate: deal.endDate,
       status: deal.status || "active",
       usageLimit: Number(deal.usageLimit || 0),
       used: Number(deal.used || 0),
@@ -176,6 +182,7 @@ function CartPage() {
         deal.serviceTypes && deal.serviceTypes.length > 0
           ? deal.serviceTypes
           : ["delivery", "pickup", "dinein"],
+      rawDeal: deal,
     };
   };
 
@@ -223,9 +230,44 @@ function CartPage() {
       return;
     }
 
-    if (coupon.status !== "active") {
+    // Kiểm tra vòng đời thời gian thực (Real-time lifecycle)
+    const lifecycle = getDealLifecycle({
+      startDate: coupon.startDate,
+      endDate: coupon.endDate,
+      status: coupon.status,
+    });
+
+    if (lifecycle.key === "invalid") {
       setAppliedCoupon(null);
-      setCouponMessage("Mã ưu đãi hiện không còn hiệu lực.");
+      setCouponMessage("Mã ưu đãi có cấu hình ngày không hợp lệ.");
+      localStorage.removeItem("appliedCoupon");
+      return;
+    }
+
+    if (lifecycle.key === "cancelled") {
+      setAppliedCoupon(null);
+      setCouponMessage("Chương trình ưu đãi này đã bị hủy.");
+      localStorage.removeItem("appliedCoupon");
+      return;
+    }
+
+    if (lifecycle.key === "paused") {
+      setAppliedCoupon(null);
+      setCouponMessage(`Chương trình ưu đãi "${coupon.title}" hiện đang tạm dừng.`);
+      localStorage.removeItem("appliedCoupon");
+      return;
+    }
+
+    if (lifecycle.key === "upcoming") {
+      setAppliedCoupon(null);
+      setCouponMessage(`Chương trình ưu đãi "${coupon.title}" chưa tới thời gian áp dụng.`);
+      localStorage.removeItem("appliedCoupon");
+      return;
+    }
+
+    if (lifecycle.key === "expired") {
+      setAppliedCoupon(null);
+      setCouponMessage(`Mã ưu đãi ${coupon.code} đã hết hạn sử dụng. Vui lòng chọn chương trình khác.`);
       localStorage.removeItem("appliedCoupon");
       return;
     }
@@ -405,34 +447,38 @@ function CartPage() {
       tag: dish.status === "low" ? "Đặc trưng" : (dish.tag || ""),
     };
 
-    setCartItems((prev) => {
-      const existed = prev.find(
-        (item) =>
-          item.id === cartDish.id &&
-          (item.priceOptionId || null) === (cartDish.priceOptionId || null),
-      );
-      let updatedCart;
-      if (existed) {
-        updatedCart = prev.map((item) =>
-          item.id === cartDish.id &&
-          (item.priceOptionId || null) === (cartDish.priceOptionId || null)
-            ? { ...item, qty: item.qty + qty }
-            : item,
+    const commitAddToCart = () => {
+      setCartItems((prev) => {
+        const existed = prev.find(
+          (item) =>
+            item.id === cartDish.id &&
+            (item.priceOptionId || null) === (cartDish.priceOptionId || null),
         );
-      } else {
-        updatedCart = [...prev, cartDish];
-      }
-      localStorage.setItem("cartItems", JSON.stringify(updatedCart));
-      window.dispatchEvent(new Event("cartUpdated"));
-      return updatedCart;
-    });
+        let updatedCart;
+        if (existed) {
+          updatedCart = prev.map((item) =>
+            item.id === cartDish.id &&
+            (item.priceOptionId || null) === (cartDish.priceOptionId || null)
+              ? { ...item, qty: item.qty + qty }
+              : item,
+          );
+        } else {
+          updatedCart = [...prev, cartDish];
+        }
+        localStorage.setItem("cartItems", JSON.stringify(updatedCart));
+        window.dispatchEvent(new Event("cartUpdated"));
+        return updatedCart;
+      });
 
-    showToast(
-      "Đã cập nhật giỏ hàng",
-      `Đã thêm "${dish.name}${priceOptionNote ? ` (${priceOptionNote})` : ""}" vào giỏ hàng`,
-      "success",
-      dish.name,
-    );
+      showToast(
+        "Đã cập nhật giỏ hàng",
+        `Đã thêm "${dish.name}${priceOptionNote ? ` (${priceOptionNote})` : ""}" vào giỏ hàng`,
+        "success",
+        dish.name,
+      );
+    };
+
+    flyToCartAnimation(event, dish.image, commitAddToCart);
   };
 
   useEffect(() => {
@@ -492,6 +538,7 @@ function CartPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      <SEO title="Giỏ Hàng" noindex={true} />
       <main className="max-w-7xl mx-auto px-3.5 sm:px-5 py-6 md:py-8">
         {/* Header & Breadcrumb */}
         <div className="mb-6">
@@ -546,7 +593,7 @@ function CartPage() {
                           title={`Xem chi tiết ${item.name}`}
                         >
                           <img
-                            src={item.image || "/images/placeholder.jpg"}
+                            src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                             alt={item.name}
                             onError={(e) => {
                               e.currentTarget.onerror = null;
@@ -970,8 +1017,12 @@ function CartPage() {
                     title={`Xem chi tiết ${dish.name}`}
                   >
                     <img
-                      src={dish.image}
+                      src={getImageUrl(dish.image) || "/images/placeholder.jpg"}
                       alt={dish.name}
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/images/placeholder.jpg";
+                      }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                   </button>
@@ -1050,7 +1101,7 @@ function CartPage() {
       {showLoginModal && (
         <LoginRequiredModal
           onClose={() => setShowLoginModal(false)}
-          onLogin={() => navigate("/login")}
+          onLogin={() => navigate("/login", { state: { from: "/cart" } })}
         />
       )}
 
@@ -1090,8 +1141,12 @@ function CartPage() {
             <X className="w-8 h-8" />
           </button>
           <img
-            src={selectedImage || selectedDish?.image}
+            src={getImageUrl(selectedImage || selectedDish?.image) || "/images/placeholder.jpg"}
             alt="Preview"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "/images/placeholder.jpg";
+            }}
             className="max-h-[85vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
           />
         </div>

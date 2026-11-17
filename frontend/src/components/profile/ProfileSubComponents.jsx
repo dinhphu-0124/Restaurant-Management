@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import GlobalPagination from "../admin/GlobalPagination";
 import { showAdminToast } from "../admin/AdminToast";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
+import { getImageUrl } from "../../config/api";
 import {
   CalendarDays,
   ShoppingCart,
@@ -602,8 +603,12 @@ export function OrderCard({ order }) {
             {items.slice(0, 3).map((item, idx) => (
               <img
                 key={idx}
-                src={item.image || "/images/placeholder.jpg"}
+                src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                 alt={item.name}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = "/images/placeholder.jpg";
+                }}
                 className="w-10 h-10 rounded-xl object-cover border-2 border-white bg-slate-100 shadow-2xs"
               />
             ))}
@@ -711,8 +716,12 @@ export function OrderCard({ order }) {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
-                        src={item.image}
+                        src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                         alt={item.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/images/placeholder.jpg";
+                        }}
                         className="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                       />
                       <div className="min-w-0">
@@ -757,8 +766,12 @@ export function OrderCard({ order }) {
             <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <img
-                  src={reviewItem.image}
+                  src={getImageUrl(reviewItem.image) || "/images/placeholder.jpg"}
                   alt={reviewItem.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/images/placeholder.jpg";
+                  }}
                   className="w-12 h-12 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                 />
                 <div>
@@ -1370,8 +1383,12 @@ export function CartContent() {
               {/* Item Info */}
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <img
-                  src={item.image || "/images/placeholder.jpg"}
+                  src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                   alt={item.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/images/placeholder.jpg";
+                  }}
                   className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover bg-slate-100 shrink-0 border border-slate-100"
                 />
                 <div className="min-w-0 flex-1">

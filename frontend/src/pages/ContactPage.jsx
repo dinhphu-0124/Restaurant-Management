@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import SEO from "../components/common/SEO";
 
 import {
   Phone,
@@ -20,6 +21,9 @@ import gtMonAn from "../assets/images/Contact/gt-mon-an.png";
 
 const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=100088682802201";
 const ZALO_URL = "https://zalo.me/0387136878";
+const MAP_URL = "https://maps.app.goo.gl/gLGw7WKaMWxbM4Qa9";
+const MAP_EMBED_URL =
+  "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3939.86!2d105.8508942!3d20.9375901!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135adb3c75f1b6f%3A0xfc1de8a9bffb75e1!2zTmjDoCBow6BuZyBC4bqjbyBMb25n!5e1!3m2!1svi!2s";
 
 function ContactPage() {
   const navigate = useNavigate();
@@ -77,6 +81,31 @@ function ContactPage() {
         </div>
       )}
 
+      {/* SEO */}
+      <SEO
+        title="Liên Hệ & Chỉ Đường | Nhà Hàng Dê Hương Sơn - Thanh Trì Hà Nội"
+        description="Thông tin liên hệ Nhà Hàng Dê Hương Sơn tại Đường Vũ Lăng, Huyện Thanh Trì, Hà Nội. Hotline/Zalo: 038 713 6878. Bản đồ chỉ đường và tư vấn đặt bàn nhanh chóng."
+        canonical="/contact"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Trang chủ",
+              item: "https://dehuongson.vercel.app/",
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Liên hệ",
+              item: "https://dehuongson.vercel.app/contact",
+            },
+          ],
+        }}
+      />
+
       {/* HERO */}
       <section
         className="relative min-h-[430px] md:min-h-[520px] bg-cover bg-center flex items-center"
@@ -124,13 +153,15 @@ function ContactPage() {
                 Gọi ngay
               </a>
 
-              <button
-                onClick={scrollToMap}
-                className="h-12 px-7 rounded-xl border border-[#d6a84f] text-[#d6a84f] font-black flex items-center justify-center gap-2 hover:bg-[#d6a84f] hover:text-green-900 transition"
+              <a
+                href={MAP_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="h-12 px-7 rounded-xl border border-[#d6a84f] text-[#d6a84f] font-black flex items-center justify-center gap-2 hover:bg-[#d6a84f] hover:text-green-900 transition shadow-sm"
               >
                 <MapPin className="w-5 h-5" />
                 Chỉ đường
-              </button>
+              </a>
             </div>
           </div>
         </div>
@@ -144,12 +175,14 @@ function ContactPage() {
             title="Hotline"
             main="038 713 6878"
             sub="Call / Zalo"
+            href="tel:0387136878"
           />
           <ContactInfo
             icon={<MapPin />}
             title="Địa chỉ"
-            main="Đ. Vũ Lăng "
-            sub="Thanh Trì, Hà Nội"
+            main="Đ. Vũ Lăng"
+            sub="Thanh Trì, Hà Nội (Nhấn để mở bản đồ)"
+            href={MAP_URL}
           />
           <ContactInfo
             icon={<Clock />}
@@ -162,6 +195,7 @@ function ContactPage() {
             title="Email"
             main="dehuongsonn.ht@gmail.com"
             sub="Phản hồi trong ngày"
+            href="mailto:dehuongsonn.ht@gmail.com"
           />
         </div>
       </section>
@@ -175,7 +209,7 @@ function ContactPage() {
           <div className="relative h-full">
             <iframe
               title="Bản đồ Dê Hương Sơn"
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3939.8604880385988!2d105.84806467548728!3d20.937626480689012!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135ad9f6221f4b3%3A0x23e41af49c85fe1a!2zTmjDoCBow6BuZyBC4bqjbyBMb25nIC0gRMOqIE7DumkgSMawxqFuZyBTxqFu!5e1!3m2!1svi!2s!4v1781164163918!5m2!1svi!2s"
+              src={MAP_EMBED_URL}
               className="w-full h-full border-0"
               loading="lazy"
               allowFullScreen
@@ -184,9 +218,10 @@ function ContactPage() {
 
             <div className="absolute left-4 bottom-16 z-20 flex flex-col gap-3">
               <a
-                href="https://maps.app.goo.gl/wSkET5ThBjNm9f29A"
+                href={MAP_URL}
                 target="_blank"
                 rel="noreferrer"
+                title="Mở trên Google Maps"
                 className="bg-primary text-white rounded-full w-12 h-12 flex items-center justify-center shadow-xl hover:bg-primary-light hover:scale-110 transition"
               >
                 <Navigation className="w-6 h-6" />
@@ -362,12 +397,15 @@ function ContactPage() {
             <Phone className="w-5 h-5" />
           </a>
 
-          <button
-            onClick={scrollToMap}
+          <a
+            href={MAP_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Xem vị trí trên Google Maps"
             className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center hover:bg-secondary hover:text-primary transition"
           >
             <MapPin className="w-5 h-5" />
-          </button>
+          </a>
 
           <a
             href={ZALO_URL}
@@ -455,18 +493,39 @@ function ContactPage() {
   );
 }
 
-function ContactInfo({ icon, title, main, sub }) {
-  return (
-    <div className="p-4 md:p-5 xl:p-6 flex items-center gap-3 xl:gap-4 border-b sm:border-r border-[#eadfcd] last:border-r-0">
+function ContactInfo({ icon, title, main, sub, href }) {
+  const innerContent = (
+    <>
       <div className="w-12 h-12 xl:w-14 xl:h-14 rounded-full bg-primary text-secondary flex items-center justify-center shrink-0">
         {icon}
       </div>
 
       <div className="min-w-0 flex-1">
         <p className="text-[10px] xl:text-xs uppercase font-black text-gray-500">{title}</p>
-        <h3 className="font-black text-primary mt-1 text-sm xl:text-base truncate" title={main}>{main}</h3>
+        <h3 className="font-black text-primary mt-1 text-sm xl:text-base truncate group-hover:text-[#b88935] transition-colors" title={main}>
+          {main}
+        </h3>
         <p className="text-[11px] xl:text-xs text-gray-500 mt-1 truncate">{sub}</p>
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target={href.startsWith("http") ? "_blank" : undefined}
+        rel={href.startsWith("http") ? "noreferrer" : undefined}
+        className="p-4 md:p-5 xl:p-6 flex items-center gap-3 xl:gap-4 border-b sm:border-r border-[#eadfcd] last:border-r-0 hover:bg-[#fbf7ec] transition group cursor-pointer"
+      >
+        {innerContent}
+      </a>
+    );
+  }
+
+  return (
+    <div className="p-4 md:p-5 xl:p-6 flex items-center gap-3 xl:gap-4 border-b sm:border-r border-[#eadfcd] last:border-r-0">
+      {innerContent}
     </div>
   );
 }

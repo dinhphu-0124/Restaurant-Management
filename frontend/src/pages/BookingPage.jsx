@@ -1,11 +1,12 @@
-import { checkLogin } from "../utils/auth";
-import { useEffect, useState } from "react";
+import { checkLogin, clearAuthSession, getCurrentUser } from "../utils/auth";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { tableService } from "../services/tableService";
 import { bookingService } from "../services/bookingService";
 import { spaceService } from "../services/spaceService";
 import { socket } from "../utils/socket";
-import { BACKEND_URL } from "../config/api";
+import { BACKEND_URL, getImageUrl } from "../config/api";
+import SEO from "../components/common/SEO";
 
 import LoginRequiredModal from "../components/LoginRequiredModal";
 import AppBadge from "../components/ui/AppBadge";
@@ -68,6 +69,32 @@ function BookingPage() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const location = useLocation();
 
+  // Nút xác nhận đặt bàn: Theo dõi xem nút có sẵn trong trang có đang hiển thị trong khung nhìn không
+  const [submitButtonEl, setSubmitButtonEl] = useState(null);
+  const [isInlineButtonVisible, setIsInlineButtonVisible] = useState(false);
+
+  useEffect(() => {
+    if (!submitButtonEl) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsInlineButtonVisible(entry.isIntersecting);
+      },
+      {
+        root: null,
+        // Dịch margin dưới -60px để nút cố định mượt mà chuyển đổi khi lướt tới
+        rootMargin: "0px 0px -60px 0px",
+        threshold: 0.05,
+      }
+    );
+
+    observer.observe(submitButtonEl);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [submitButtonEl]);
+
   const selectedDish = location.state?.selectedDish;
   const bookingCartItems = location.state?.cartItems || [];
 
@@ -81,7 +108,30 @@ function BookingPage() {
   );
 
   useEffect(() => {
-    setIsLoggedIn(checkLogin());
+    const updateLoginStatus = () => {
+      const logged = checkLogin();
+      setIsLoggedIn(logged);
+      if (logged) {
+        const user = getCurrentUser();
+        if (user) {
+          setForm((prev) => ({
+            ...prev,
+            name: prev.name || user.fullName || user.name || "",
+            phone: prev.phone || user.phone || "",
+            email: prev.email || user.email || "",
+          }));
+        }
+      }
+    };
+
+    updateLoginStatus();
+    window.addEventListener("loginStatusChanged", updateLoginStatus);
+    window.addEventListener("storage", updateLoginStatus);
+
+    return () => {
+      window.removeEventListener("loginStatusChanged", updateLoginStatus);
+      window.removeEventListener("storage", updateLoginStatus);
+    };
   }, []);
 
   const [form, setForm] = useState(() => {
@@ -118,6 +168,11 @@ function BookingPage() {
   const [adminTables, setAdminTables] = useState([]);
   const [bookings, setBookings] = useState([]);
 
+  const maxTableCapacity = useMemo(() => {
+    if (!adminTables || adminTables.length === 0) return 30;
+    return Math.max(...adminTables.map((t) => Number(t.capacity || 0)));
+  }, [adminTables]);
+
   const [selectedArea, setSelectedArea] = useState(() => {
     return localStorage.getItem("bookingSelectedArea") || "";
   });
@@ -125,11 +180,15 @@ function BookingPage() {
     return localStorage.getItem("bookingSelectedTable") || "";
   });
 
+  const isSubmittedRef = useRef(false);
+
   useEffect(() => {
+    if (isSubmittedRef.current) return;
     localStorage.setItem("bookingForm", JSON.stringify(form));
   }, [form]);
 
   useEffect(() => {
+    if (isSubmittedRef.current) return;
     if (selectedArea) {
       localStorage.setItem("bookingSelectedArea", selectedArea);
     } else {
@@ -138,6 +197,7 @@ function BookingPage() {
   }, [selectedArea]);
 
   useEffect(() => {
+    if (isSubmittedRef.current) return;
     if (selectedTable) {
       localStorage.setItem("bookingSelectedTable", selectedTable);
     } else {
@@ -396,32 +456,131 @@ function BookingPage() {
     }
 
     setSelectedTable(table.code);
+    if (errors.table) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.table;
+        return next;
+      });
+    }
+  };
+
+  const handleSelectArea = (areaId) => {
+    const idStr = String(areaId);
+    setSelectedArea(idStr);
+    if (errors.area) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.area;
+        return next;
+      });
+    }
+    const bestTable = findBestAvailableTable(idStr);
+    const tableCode = bestTable?.code || "";
+    setSelectedTable(tableCode);
+    if (tableCode && errors.table) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.table;
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
     if (!form.date || !selectedArea) return;
+
+    // Nếu người dùng đã chọn một bàn và bàn đó vẫn khả dụng ở ngày mới, giữ nguyên lựa chọn
+    if (selectedTable) {
+      const currentTableObj = adminTables.find(
+        (t) => String(t.areaId) === String(selectedArea) && String(t.code) === String(selectedTable)
+      );
+      const guestCount = getGuestCount();
+      const isCurrentValid =
+        currentTableObj &&
+        !isUnavailableTable(currentTableObj) &&
+        (guestCount <= 0 || Number(currentTableObj.capacity || 0) >= guestCount);
+
+      if (isCurrentValid) {
+        return;
+      }
+    }
+
     const bestTable = findBestAvailableTable(selectedArea);
     setSelectedTable(bestTable?.code || "");
   }, [form.date, form.guests, selectedArea, bookings, adminTables]);
 
   const handleChange = (e) => {
-    const val = e.target.name === "phone" ? e.target.value.replace(/\D/g, "") : e.target.value;
-    setForm({
-      ...form,
-      [e.target.name]: val,
-    });
+    const { name, value } = e.target;
+    let val = value;
+    if (name === "phone") {
+      // Cho phép dấu + ở đầu, các ký tự sau phải là số
+      val = value.replace(/[^\d+]/g, "").replace(/(?!^)\+/g, "");
+    }
+    setForm((prev) => ({
+      ...prev,
+      [name]: val,
+    }));
+    if (errors[name]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
   };
 
   const validateForm = () => {
     const newErrors = {};
     const now = new Date();
 
-    if (!form.date) newErrors.date = "Vui lòng chọn ngày";
-    if (!form.time) newErrors.time = "Vui lòng chọn giờ";
-    if (!form.guests || Number(form.guests) <= 0) {
-      newErrors.guests = "Số khách phải lớn hơn 0";
+    // 1. Họ và tên
+    const nameRegex = /^[a-zA-ZÀ-ỹ\s]{2,100}$/;
+    if (!form.name || !form.name.trim()) {
+      newErrors.name = "Vui lòng nhập họ và tên";
+    } else if (!nameRegex.test(form.name.trim())) {
+      newErrors.name = "Họ và tên không hợp lệ (chỉ chứa chữ cái, từ 2 đến 100 ký tự)";
     }
 
+    // 2. Số điện thoại: Chuẩn hóa +84 thành 0 nếu có và kiểm tra regex
+    const rawPhone = (form.phone || "").trim();
+    if (!rawPhone) {
+      newErrors.phone = "Vui lòng nhập số điện thoại";
+    } else {
+      const normalizedPhone = rawPhone.startsWith("+84") ? "0" + rawPhone.slice(3) : rawPhone;
+      if (!phoneRegex.test(rawPhone) && !phoneRegex.test(normalizedPhone)) {
+        newErrors.phone =
+          "Số điện thoại không đúng định dạng Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09)";
+      }
+    }
+
+    // 3. Email (nếu người dùng có nhập thì phải hợp lệ)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (form.email && form.email.trim() && !emailRegex.test(form.email.trim())) {
+      newErrors.email = "Email không đúng định dạng (Ví dụ: name@gmail.com)";
+    }
+
+    // 4. Ngày dùng bữa
+    if (!form.date) {
+      newErrors.date = "Vui lòng chọn ngày dùng bữa";
+    }
+
+    // 5. Giờ đến
+    if (!form.time) {
+      newErrors.time = "Vui lòng chọn giờ dùng bữa";
+    }
+
+    // 6. Số lượng khách
+    const guestNum = Number(form.guests);
+    if (!form.guests || isNaN(guestNum) || guestNum <= 0) {
+      newErrors.guests = "Vui lòng nhập số lượng khách";
+    } else if (!Number.isInteger(guestNum)) {
+      newErrors.guests = "Số lượng khách phải là số nguyên";
+    } else if (guestNum > maxTableCapacity) {
+      newErrors.guests = `Bàn đơn tối đa ${maxTableCapacity} người. Đặt tiệc đông người (> ${maxTableCapacity} khách), vui lòng gọi hotline 038 713 6878 để được sắp xếp chu đáo.`;
+    }
+
+    // Kiểm tra tính hợp lệ của Ngày & Giờ kết hợp
     if (form.date && form.time) {
       const selectedDateTime = new Date(`${form.date}T${form.time}`);
       const selectedDateOnly = new Date(`${form.date}T00:00`);
@@ -440,30 +599,66 @@ function BookingPage() {
       }
     }
 
+    // 7. Chọn không gian hẹn (khu vực)
     if (!selectedArea) {
       newErrors.area = "Vui lòng chọn khu vực bạn muốn ngồi";
     }
 
+    // 8. Chọn bàn (nếu không phải tự động xếp bàn)
     if (!isAutoArrange && !selectedTable) {
-      newErrors.table = "Vui lòng chọn bàn mong muốn";
-    }
-
-    if (!form.name.trim()) newErrors.name = "Vui lòng nhập họ tên";
-    if (!phoneRegex.test(form.phone)) {
-      newErrors.phone = "Số điện thoại không đúng định dạng Việt Nam (10 số, bắt đầu bằng 03, 05, 07, 08, 09)";
+      newErrors.table = "Vui lòng chọn bàn mong muốn trên sơ đồ";
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+
+    // Thứ tự ưu tiên điều hướng từ trên xuống dưới
+    const fieldOrder = [
+      "name",
+      "phone",
+      "email",
+      "date",
+      "time",
+      "guests",
+      "area",
+      "table",
+    ];
+
+    const firstErrorField = fieldOrder.find((field) => !!newErrors[field]);
+
+    if (firstErrorField) {
+      setTimeout(() => {
+        if (firstErrorField === "table") {
+          const tableSection = document.getElementById("table-map-section");
+          tableSection?.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (firstErrorField === "area") {
+          const areaSection = document.getElementById("area-selection-section");
+          areaSection?.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          const errorInput = document.querySelector(`[name="${firstErrorField}"]`);
+          if (errorInput) {
+            errorInput.scrollIntoView({ behavior: "smooth", block: "center" });
+            errorInput.focus?.({ preventScroll: true });
+          }
+        }
+      }, 50);
+
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async () => {
-    if (!isLoggedIn) {
+    // 1. Kiểm tra tính hợp lệ của toàn bộ form trước để người dùng thấy lỗi ngay
+    if (!validateForm()) return;
+
+    // 2. Kiểm tra trạng thái đăng nhập
+    if (!checkLogin()) {
+      clearAuthSession();
+      setIsLoggedIn(false);
       setShowLoginModal(true);
       return;
     }
-
-    if (!validateForm()) return;
 
     if (!isAutoArrange) {
       const guestCount = Number(form.guests || 0);
@@ -511,14 +706,18 @@ function BookingPage() {
       }
     }
 
+    const cleanPhone = form.phone.trim().startsWith("+84")
+      ? "0" + form.phone.trim().slice(3)
+      : form.phone.trim();
+
     const newBooking = {
       id: new Date().getTime(),
       source: "booking_page",
       type: isAutoArrange ? "table_with_food" : "table_only",
 
-      customerName: form.name,
-      phone: form.phone,
-      email: form.email,
+      customerName: form.name.trim(),
+      phone: cleanPhone,
+      email: form.email.trim(),
 
       selectedArea: isAutoArrange ? "" : selectedArea,
       selectedTable: isAutoArrange ? "" : selectedTable,
@@ -528,7 +727,7 @@ function BookingPage() {
 
       date: form.date,
       time: form.time,
-      guests: form.guests,
+      guests: Number(form.guests),
       note: form.note,
 
       selectedDish: selectedDish
@@ -563,6 +762,7 @@ function BookingPage() {
         localStorage.setItem("currentBooking", JSON.stringify(savedBooking));
         navigate("/payment-qr");
       } else {
+        isSubmittedRef.current = true;
         localStorage.removeItem("bookingForm");
         localStorage.removeItem("bookingSelectedArea");
         localStorage.removeItem("bookingSelectedTable");
@@ -570,6 +770,26 @@ function BookingPage() {
       }
     } catch (error) {
       console.error(error);
+
+      const isAuthError =
+        error.status === 401 ||
+        error.message?.includes("Phiên đăng nhập") ||
+        error.message?.includes("hết hạn") ||
+        error.message?.includes("chưa đăng nhập");
+
+      if (isAuthError) {
+        clearAuthSession();
+        setIsLoggedIn(false);
+        showAdminToast({
+          title: "Phiên đăng nhập hết hạn",
+          message:
+            "Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục đặt bàn.",
+          type: "warning",
+        });
+        setShowLoginModal(true);
+        return;
+      }
+
       showAdminToast({
         title: "Lỗi tạo đặt bàn",
         message: error.message || "Không thể tạo đặt bàn. Vui lòng thử lại.",
@@ -598,7 +818,30 @@ function BookingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <main className="max-w-7xl mx-auto px-3.5 sm:px-5 py-6 md:py-8">
+      <SEO
+        title="Đặt Bàn Trực Tuyến | Nhà Hàng Dê Hương Sơn - Thanh Trì Hà Nội"
+        description="Đặt bàn tiệc gia đình, liên hoan, phòng VIP tại Nhà Hàng Dê Hương Sơn - Đường Vũ Lăng, Thanh Trì, Hà Nội. Giữ chỗ nhanh chóng, phục vụ tận tâm."
+        canonical="/booking"
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Trang chủ",
+              item: "https://dehuongson.vercel.app/",
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Đặt bàn",
+              item: "https://dehuongson.vercel.app/booking",
+            },
+          ],
+        }}
+      />
+      <main className="max-w-7xl mx-auto px-3.5 sm:px-5 py-6 md:py-8 pb-24 lg:pb-12">
         {/* Breadcrumb & Header */}
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#145c30] tracking-tight">
@@ -627,8 +870,12 @@ function BookingPage() {
                   className="w-[140px] shrink-0 bg-white rounded-2xl p-2.5 border border-emerald-100 shadow-sm"
                 >
                   <img
-                    src={item.image}
+                    src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                     alt={item.name}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/images/placeholder.jpg";
+                    }}
                     className="w-full aspect-square object-cover rounded-xl"
                   />
                   <p className="font-bold text-slate-900 mt-2 text-xs line-clamp-2 h-8 leading-snug">
@@ -680,6 +927,7 @@ function BookingPage() {
                   placeholder="Ví dụ: Nguyễn Văn A"
                   icon={<User className="w-4 h-4" />}
                   error={errors.name}
+                  maxLength={100}
                 />
                 <FormInput
                   label="Số điện thoại"
@@ -761,22 +1009,41 @@ function BookingPage() {
                   placeholder="Ví dụ: 4"
                   icon={<Users className="w-4 h-4" />}
                   error={errors.guests}
+                  min="1"
+                  max={maxTableCapacity}
+                  step="1"
+                  helperText={errors.guests ? undefined : `Tối đa ${maxTableCapacity} khách/bàn (tiệc lớn vui lòng gọi hotline)`}
                 />
               </div>
             </div>
 
             {/* Step 3: Area Selection */}
-            <div className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-4">
+            <div
+              id="area-selection-section"
+              className={`bg-white rounded-3xl p-5 md:p-6 shadow-sm space-y-4 transition-all duration-200 ${
+                errors.area
+                  ? "border-2 border-rose-500 ring-4 ring-rose-500/10"
+                  : "border border-slate-200/80"
+              }`}
+            >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                  <span className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shadow-xs">
+                  <span
+                    className={`w-7 h-7 rounded-xl text-white flex items-center justify-center text-xs font-black shadow-xs ${
+                      errors.area ? "bg-rose-600" : "bg-emerald-600"
+                    }`}
+                  >
                     3
                   </span>
                   <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
                     CHỌN KHÔNG GIAN HẸN
                   </h2>
                 </div>
-                {errors.area && <p className="text-rose-600 text-xs font-bold">{errors.area}</p>}
+                {errors.area && (
+                  <p className="text-rose-600 text-xs font-bold flex items-center gap-1">
+                    <span>⚠</span> {errors.area}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
@@ -789,24 +1056,19 @@ function BookingPage() {
                       key={area.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => {
-                        const areaId = String(area.id);
-                        setSelectedArea(areaId);
-                        const bestTable = findBestAvailableTable(areaId);
-                        setSelectedTable(bestTable?.code || "");
-                      }}
+                      onClick={() => handleSelectArea(area.id)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
-                          const areaId = String(area.id);
-                          setSelectedArea(areaId);
-                          const bestTable = findBestAvailableTable(areaId);
-                          setSelectedTable(bestTable?.code || "");
+                          handleSelectArea(area.id);
                         }
                       }}
-                      className={`group cursor-pointer rounded-2xl overflow-hidden border-2 transition-all duration-200 focus-visible:outline-2 focus-visible:outline-emerald-600 ${isSelected
+                      className={`group cursor-pointer rounded-2xl overflow-hidden border-2 transition-all duration-200 focus-visible:outline-2 focus-visible:outline-emerald-600 ${
+                        isSelected
                           ? "border-emerald-600 shadow-sm"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
+                          : errors.area
+                            ? "border-rose-300 hover:border-rose-400 bg-white"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                      }`}
                     >
                       <div className="h-28 overflow-hidden relative bg-slate-100">
                         <img
@@ -844,7 +1106,14 @@ function BookingPage() {
           </div>
 
           {/* RIGHT: TABLE SELECTOR MAP & SUBMISSION */}
-          <aside className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 shadow-sm space-y-5 lg:sticky lg:top-24">
+          <aside
+            id="table-map-section"
+            className={`bg-white rounded-3xl p-5 md:p-6 shadow-sm space-y-5 lg:sticky lg:top-24 transition-all duration-200 ${
+              errors.table
+                ? "border-2 border-rose-500 ring-4 ring-rose-500/10"
+                : "border border-slate-200/80"
+            }`}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
                 SƠ ĐỒ CHỌN BÀN
@@ -854,7 +1123,11 @@ function BookingPage() {
               </span>
             </div>
 
-            {errors.table && <p className="text-rose-600 text-xs font-bold">{errors.table}</p>}
+            {errors.table && (
+              <p className="text-rose-600 text-xs font-bold flex items-center gap-1.5 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
+                <span>⚠</span> {errors.table}
+              </p>
+            )}
 
             {isAutoArrange && (
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-900 font-semibold text-xs leading-relaxed">
@@ -879,7 +1152,13 @@ function BookingPage() {
             </div>
 
             {/* Table Grid */}
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+            <div
+              className={`grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-[220px] overflow-y-auto p-1.5 rounded-xl custom-scrollbar ${
+                errors.table
+                  ? "border-2 border-dashed border-rose-400 bg-rose-50/20"
+                  : "pr-1"
+              }`}
+            >
               {currentTables.map((table) => {
                 const tableBooking = getTableBookingAtSelectedDate(table.code);
                 const holding = tableBooking?.status === "pending" || tableBooking?.status === "Chờ xác nhận";
@@ -926,6 +1205,7 @@ function BookingPage() {
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Sức chứa: {selectedTableInfo ? `${selectedTableInfo.capacity} khách` : "Chưa rõ"}
+                  {form.guests ? ` • Đang đặt: ${form.guests} người` : ""}
                 </p>
               </div>
               {selectedTableOverCapacity && (
@@ -982,9 +1262,10 @@ function BookingPage() {
 
             {/* Submit Button */}
             <button
+              ref={setSubmitButtonEl}
               type="button"
               onClick={handleSubmit}
-              className="w-full h-13 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm tracking-wide"
+              className="w-full h-13 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2 text-sm tracking-wide cursor-pointer"
             >
               <CalendarDays className="w-5 h-5" />
               {requiresDeposit ? "ĐẶT CỌC & XÁC NHẬN" : "XÁC NHẬN ĐẶT BÀN"}
@@ -1017,10 +1298,70 @@ function BookingPage() {
         </section>
       </main>
 
+      {/* Floating Bottom Action Bar: Cố định ở dưới cùng khi nút chính bị cuộn khuất */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-8px_25px_rgba(0,0,0,0.12)] px-3.5 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-all duration-300 ease-in-out transform ${
+          !isInlineButtonVisible
+            ? "translate-y-0 opacity-100 pointer-events-auto"
+            : "translate-y-full opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          {/* Thông tin tóm tắt nhanh */}
+          <div className="flex flex-col min-w-0 pr-1">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 truncate">
+              <span className="truncate">
+                {isAutoArrange
+                  ? "Tự động xếp bàn"
+                  : selectedTable
+                    ? `Bàn ${selectedTable} • ${currentArea?.title || "Khu vực"}`
+                    : "Chưa chọn bàn"}
+              </span>
+              {form.guests && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-700 font-extrabold whitespace-nowrap flex items-center gap-0.5">
+                    <Users className="w-3 h-3 text-emerald-600 inline shrink-0" />
+                    {form.guests} người
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800 truncate">
+              <span className="truncate">
+                {form.date
+                  ? `${form.date.split("-").reverse().join("/")}${form.time ? ` • ${form.time}` : ""}`
+                  : "Chọn ngày & giờ"}
+              </span>
+              {requiresDeposit && (
+                <>
+                  <span className="text-emerald-300">•</span>
+                  <span className="text-amber-700 font-extrabold whitespace-nowrap text-[11px]">
+                    Cọc 200k
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Nút Xác nhận đặt bàn cố định */}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="shrink-0 h-11 sm:h-12 py-2.5 px-4 sm:px-6 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm tracking-wide cursor-pointer"
+          >
+            <CalendarDays className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="truncate">
+              {requiresDeposit ? "ĐẶT CỌC & XÁC NHẬN" : "XÁC NHẬN ĐẶT BÀN"}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {showLoginModal && (
         <LoginRequiredModal
           onClose={() => setShowLoginModal(false)}
-          onLogin={() => navigate("/login")}
+          onLogin={() => navigate("/login", { state: { from: "/booking" } })}
         />
       )}
     </div>
@@ -1037,6 +1378,7 @@ function FormInput({
   type = "text",
   error,
   helperText,
+  ...props
 }) {
   return (
     <label className="block text-left w-full">
@@ -1046,10 +1388,13 @@ function FormInput({
         </span>
       )}
       <div
-        className={`h-11 rounded-xl px-3 flex items-center gap-2 bg-slate-50 border transition focus-within:bg-white focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15 ${error ? "border-rose-500 bg-rose-50/50" : "border-slate-200"
-          }`}
+        className={`h-11 rounded-xl px-3 flex items-center gap-2 transition ${
+          error
+            ? "border-2 border-rose-500 bg-rose-50/40 ring-2 ring-rose-500/20"
+            : "bg-slate-50 border border-slate-200 focus-within:bg-white focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-600/15"
+        }`}
       >
-        <span className="text-slate-400 shrink-0">{icon}</span>
+        <span className={`shrink-0 ${error ? "text-rose-500" : "text-slate-400"}`}>{icon}</span>
         <input
           name={name}
           type={type}
@@ -1057,9 +1402,14 @@ function FormInput({
           onChange={onChange}
           placeholder={placeholder}
           className="w-full outline-none focus:outline-none focus:ring-0 border-none bg-transparent text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400"
+          {...props}
         />
       </div>
-      {error && <p className="text-rose-600 text-[11px] mt-1 font-semibold">{error}</p>}
+      {error && (
+        <p className="text-rose-600 text-[11px] mt-1 font-semibold flex items-center gap-1">
+          <span>⚠</span> {error}
+        </p>
+      )}
       {!error && helperText && (
         <p className="text-[11px] text-slate-400 mt-1 font-medium">{helperText}</p>
       )}

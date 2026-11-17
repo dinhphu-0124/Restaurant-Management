@@ -1,7 +1,8 @@
 import { checkLogin } from "../utils/auth";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { BACKEND_URL, API_BASE_URL } from "../config/api";
+import { BACKEND_URL, API_BASE_URL, getImageUrl } from "../config/api";
+import SEO from "../components/common/SEO";
 
 import {
   ShoppingCart,
@@ -917,6 +918,7 @@ function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      <SEO title="Thanh Toán Đơn Hàng" noindex={true} />
       <main className="max-w-7xl mx-auto px-5 py-6 md:py-8">
         {/* Header & Breadcrumbs */}
         <div className="mb-6">
@@ -1055,8 +1057,12 @@ function CheckoutPage() {
                   className="py-3 flex gap-3 items-center"
                 >
                   <img
-                    src={item.image}
+                    src={getImageUrl(item.image) || "/images/placeholder.jpg"}
                     alt={item.name}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/images/placeholder.jpg";
+                    }}
                     className="w-13 h-13 rounded-xl object-cover shrink-0 bg-slate-100 border border-slate-100"
                   />
 

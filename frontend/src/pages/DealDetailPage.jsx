@@ -9,6 +9,8 @@ import {
   Copy,
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
+import { getDealLifecycle } from "../utils/dealsHelpers";
+import SEO from "../components/common/SEO";
 
 function DealDetailPage() {
   const { dealId } = useParams();
@@ -119,11 +121,12 @@ function DealDetailPage() {
 
   const adminDeal = adminDeals.find(
     (item) =>
-      (item.status === "active" || item.status === "upcoming") &&
-      (String(item.slug) === String(dealId) ||
-        String(item.code) === String(dealId) ||
-        String(item.id) === String(dealId)),
+      String(item.slug) === String(dealId) ||
+      String(item.code) === String(dealId) ||
+      String(item.id) === String(dealId),
   );
+
+  const lifecycle = adminDeal ? getDealLifecycle(adminDeal) : null;
 
   const deal = adminDeal
     ? {
@@ -147,6 +150,7 @@ function DealDetailPage() {
         condition: getAdminConditions(adminDeal),
         route: getDealAction(adminDeal).route,
         button: getDealAction(adminDeal).button,
+        lifecycle,
       }
     : null;
 
@@ -193,6 +197,35 @@ function DealDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#fbf7ec] text-green-950 pt-[25px]">
+      <SEO
+        title={`${deal.title} | Khuyến Mãi Nhà Hàng Dê Hương Sơn`}
+        description={deal.desc || `Chi tiết chương trình ưu đãi ${deal.title} tại Nhà Hàng Dê Hương Sơn - Hà Nội. Mã ưu đãi: ${deal.code}.`}
+        canonical={`/deals/${dealId}`}
+        schema={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            {
+              "@type": "ListItem",
+              position: 1,
+              name: "Trang chủ",
+              item: "https://dehuongson.vercel.app/",
+            },
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: "Khuyến mãi",
+              item: "https://dehuongson.vercel.app/deals",
+            },
+            {
+              "@type": "ListItem",
+              position: 3,
+              name: deal.title,
+              item: `https://dehuongson.vercel.app/deals/${dealId}`,
+            },
+          ],
+        }}
+      />
       <main className="max-w-6xl mx-auto px-4 md:px-6 pb-12">
         <button
           onClick={() => navigate("/deals")}
@@ -254,26 +287,60 @@ function DealDetailPage() {
               {/* mã khuyến mãi */}
               {deal.code && (
                 <div className="mt-6 max-w-md bg-white/10 border border-white/20 rounded-2xl p-4">
-                  <p className="text-sm text-white/70 font-bold mb-2">
-                    Mã khuyến mãi
-                  </p>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-white text-green-950 rounded-xl px-4 py-3 font-black tracking-widest text-lg">
-                      {deal.code}
+                  {deal.lifecycle?.key === "expired" || deal.lifecycle?.key === "invalid" ? (
+                    <div>
+                      <span className="inline-block px-3 py-1 rounded-lg bg-red-500/20 text-red-200 border border-red-400/30 text-xs font-black uppercase mb-2">
+                        Đã kết thúc
+                      </span>
+                      <p className="text-white/80 text-xs leading-relaxed">
+                        Chương trình ưu đãi này đã hết thời gian áp dụng ({deal.time}). Quý khách vui lòng tham khảo các chương trình ưu đãi khác đang diễn ra.
+                      </p>
                     </div>
+                  ) : deal.lifecycle?.key === "paused" ? (
+                    <div>
+                      <span className="inline-block px-3 py-1 rounded-lg bg-orange-500/20 text-orange-200 border border-orange-400/30 text-xs font-black uppercase mb-2">
+                        Tạm dừng
+                      </span>
+                      <p className="text-white/80 text-xs leading-relaxed">
+                        Chương trình ưu đãi đang tạm dừng áp dụng. Quý khách vui lòng quay lại sau.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-white/70 font-bold">
+                          Mã khuyến mãi
+                        </p>
+                        {deal.lifecycle?.key === "expiring_soon" && (
+                          <span className="text-[11px] font-black text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                            ⚡ {deal.lifecycle.warningText}
+                          </span>
+                        )}
+                        {deal.lifecycle?.key === "upcoming" && (
+                          <span className="text-[11px] font-black text-sky-300 bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-400/30">
+                            Sắp diễn ra
+                          </span>
+                        )}
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={handleCopyCoupon}
-                      className="h-[52px] px-4 rounded-xl bg-[#f6c441] text-green-950 font-black hover:bg-[#d6a84f] transition flex items-center gap-2"
-                    >
-                      <Copy className="w-4 h-4" />
-                      {copied ? "Đã copy" : "Copy"}
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-white text-green-950 rounded-xl px-4 py-3 font-black tracking-widest text-lg">
+                          {deal.code}
+                        </div>
 
-                  <p className="text-xs text-white/60 mt-2">{deal.minOrder}</p>
+                        <button
+                          type="button"
+                          onClick={handleCopyCoupon}
+                          className="h-[52px] px-4 rounded-xl bg-[#f6c441] text-green-950 font-black hover:bg-[#d6a84f] transition flex items-center gap-2 cursor-pointer"
+                        >
+                          <Copy className="w-4 h-4" />
+                          {copied ? "Đã copy" : "Copy"}
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-white/60 mt-2">{deal.minOrder}</p>
+                    </>
+                  )}
                 </div>
               )}
 

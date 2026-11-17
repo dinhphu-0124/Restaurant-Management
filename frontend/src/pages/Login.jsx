@@ -7,17 +7,19 @@ import {
   getCurrentUser,
   clearAuthSession,
 } from "../utils/auth";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { firebaseAuth, googleProvider } from "../services/firebase";
 import { Eye, EyeOff, AlertCircle, User, Lock } from "lucide-react";
+import SEO from "../components/common/SEO";
 
 import backgroundImage from "../assets/images/Register_Login.png";
 import goatIcon from "../assets/images/Icon_De.png";
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
     account: "",
     password: "",
@@ -89,7 +91,11 @@ function Login() {
         remember: formData.remember,
       });
 
-      navigate(data.user.role === "admin" ? "/admin/dashboard" : "/home", {
+      const redirectTarget =
+        location.state?.from ||
+        (data.user.role === "admin" ? "/admin/dashboard" : "/home");
+
+      navigate(redirectTarget, {
         state: {
           loginSuccess: true,
         },
@@ -130,7 +136,11 @@ function Login() {
         remember: true,
       });
 
-      navigate(data.user.role === "admin" ? "/admin/dashboard" : "/home", {
+      const redirectTarget =
+        location.state?.from ||
+        (data.user.role === "admin" ? "/admin/dashboard" : "/home");
+
+      navigate(redirectTarget, {
         state: {
           loginSuccess: true,
         },
@@ -159,9 +169,12 @@ function Login() {
     const currentUser = getCurrentUser();
 
     if (currentUser) {
-      navigate(currentUser.role === "admin" ? "/admin/dashboard" : "/home");
+      const redirectTarget =
+        location.state?.from ||
+        (currentUser.role === "admin" ? "/admin/dashboard" : "/home");
+      navigate(redirectTarget);
     }
-  }, [navigate]);
+  }, [navigate, location]);
 
   return (
     <div
@@ -171,6 +184,7 @@ function Login() {
       }}
     >
       <div className="min-h-screen flex flex-col">
+        <SEO title="Đăng Nhập Khách Hàng" noindex={true} />
         {/* HEADER */}
         <Header currentPage="" />
         <div className="h-16"></div>

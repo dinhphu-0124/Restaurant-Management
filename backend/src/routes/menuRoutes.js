@@ -22,7 +22,7 @@ function formatPrice(value) {
 
 function normalizeImageUrl(url) {
   if (!url || typeof url !== "string") return url;
-  return url.replace(/^http:\/\/(localhost|127\.0\.0\.1):5001/, "");
+  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, "");
 }
 
 function mapPublicMenuItem(row, priceOptions = []) {
@@ -138,7 +138,7 @@ router.get("/", async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Lỗi server khi lấy menu người dùng",
+      message: "Không thể tải thực đơn lúc này. Vui lòng thử lại sau.",
       error: error.message,
     });
   }

@@ -1,0 +1,27 @@
+# robots.txt for Nha Hang De Huong Son
+User-agent: *
+Allow: /
+Allow: /menu
+Allow: /deals
+Allow: /deals/*
+Allow: /booking
+Allow: /about
+Allow: /contact
+
+# Disallow admin and internal private routes
+Disallow: /admin
+Disallow: /admin/
+Disallow: /cart
+Disallow: /checkout
+Disallow: /payment-qr
+Disallow: /order-success
+Disallow: /booking-success
+Disallow: /profile
+Disallow: /profile/
+Disallow: /verify-email
+Disallow: /login
+Disallow: /register
+
+# Sitemap
+Sitemap: https://dehuongson.vercel.app/sitemap.xml
+

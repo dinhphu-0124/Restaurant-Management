@@ -17,6 +17,7 @@ import {
   User,
   Lock,
 } from "lucide-react";
+import SEO from "../components/common/SEO";
 
 import backgroundImage from "../assets/images/Register_Login.png";
 import goatIcon from "../assets/images/Icon_De.png";
@@ -260,6 +261,7 @@ function Register() {
       }}
     >
       <div className="min-h-screen flex flex-col">
+        <SEO title="Đăng Ký Tài Khoản" noindex={true} />
         {/* HEADER */}
         <Header currentPage="" />
         <div className="h-16"></div>

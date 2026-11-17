@@ -188,10 +188,10 @@ export function Promo({
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick && onClick()}
-      className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 md:p-3.5 border border-[#e2ece5] shadow-xs hover:shadow-md transition-all duration-300 flex flex-row gap-2 sm:gap-3 relative group cursor-pointer"
+      className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 md:p-3.5 border border-[#e2ece5] shadow-xs hover:shadow-md transition-all duration-300 flex flex-row gap-2 sm:gap-3 relative group cursor-pointer w-full min-w-0"
     >
       {/* Left Food Image */}
-      <div className="w-[32%] sm:w-[33%] md:w-[35%] min-w-[90px] sm:min-w-[108px] max-w-[125px] sm:max-w-[140px] h-32 sm:h-36 md:h-38 rounded-xl sm:rounded-2xl overflow-hidden relative shrink-0 bg-amber-50">
+      <div className="w-[30%] sm:w-[33%] md:w-[35%] min-w-[85px] sm:min-w-[108px] max-w-[115px] sm:max-w-[140px] h-32 sm:h-36 md:h-38 rounded-xl sm:rounded-2xl overflow-hidden relative shrink-0 bg-amber-50">
         <img
           src={image}
           alt={title}
@@ -235,7 +235,7 @@ export function Promo({
 
         <div className="mt-1 sm:mt-1.5">
           {/* Time & Countdown: Stacked vertically with whitespace-nowrap to prevent awkward line breaks */}
-          <div className="space-y-1 mb-1.5 sm:mb-2 text-[10px] sm:text-[11px] md:text-xs">
+          <div className="space-y-1 mb-1.5 sm:mb-2 text-[10px] sm:text-[11px] md:text-xs min-w-0 overflow-hidden">
             <div className="flex items-center gap-1.5 font-medium text-gray-700 min-w-0">
               <svg
                 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-700 shrink-0"
@@ -296,9 +296,9 @@ export function PromoBanner({ onClick }) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick && onClick()}
-      className="bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-emerald-100/70 border border-emerald-200/60 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex items-center justify-between gap-2.5 shadow-2xs cursor-pointer group hover:shadow-sm transition"
+      className="bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-emerald-100/70 border border-emerald-200/60 rounded-2xl sm:rounded-3xl p-2.5 sm:p-3 flex items-center justify-between gap-2 shadow-2xs cursor-pointer group hover:shadow-sm transition w-full min-w-0 overflow-hidden"
     >
-      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
         <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-white shadow-xs border border-emerald-200/70 flex items-center justify-center shrink-0 text-emerald-800">
           <svg
             className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-700"
@@ -315,11 +315,11 @@ export function PromoBanner({ onClick }) {
             <line x1="3" x2="21" y1="10" y2="10" />
           </svg>
         </div>
-        <div className="min-w-0">
-          <h4 className="font-black text-emerald-950 text-xs sm:text-sm truncate">
+        <div className="min-w-0 flex-1">
+          <h4 className="font-black text-emerald-950 text-[11px] sm:text-xs md:text-sm leading-tight">
             Khám phá thêm nhiều ưu đãi khác
           </h4>
-          <p className="text-[10px] sm:text-xs text-emerald-800/80 truncate">
+          <p className="text-[9.5px] sm:text-[11px] md:text-xs text-emerald-800/80 leading-tight mt-0.5">
             Món ngon – Giá tốt – Trải nghiệm tuyệt vời
           </p>
         </div>
@@ -335,26 +335,26 @@ export function PromoBanner({ onClick }) {
 
 export function Review({ name, text }) {
   return (
-    <div className="bg-white rounded-2xl p-3 md:p-4 mb-3 md:mb-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <p className="font-bold text-green-900 text-sm">{name}</p>
-        <div className="text-yellow-500 text-xs md:text-sm">★★★★★</div>
+    <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-2.5 sm:mb-3 last:mb-0 shadow-xs border border-[#eadfcd]/40 w-full min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
+        <p className="font-bold text-green-900 text-xs sm:text-sm truncate">{name}</p>
+        <div className="text-yellow-500 text-xs sm:text-sm shrink-0 whitespace-nowrap">★★★★★</div>
       </div>
 
-      <p className="text-xs md:text-sm text-gray-600 leading-relaxed">{text}</p>
+      <p className="text-[11px] sm:text-xs md:text-sm text-gray-600 leading-relaxed break-words">{text}</p>
     </div>
   );
 }
 
 export function Service({ icon, title, text }) {
   return (
-    <div className="p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 border-b sm:border-b-0 border-r border-gray-100 last:border-r-0 [&:nth-child(2)]:border-r-0 lg:[&:nth-child(2)]:border-r">
-      <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-green-50 text-green-800 flex items-center justify-center shrink-0">
+    <div className="p-2 sm:p-3.5 md:p-5 flex items-center gap-1.5 sm:gap-3.5 border-b sm:border-b-0 border-r border-gray-100 last:border-r-0 [&:nth-child(2)]:border-r-0 lg:[&:nth-child(2)]:border-r w-full min-w-0">
+      <div className="w-7 h-7 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-full bg-green-50 text-green-800 flex items-center justify-center shrink-0">
         {icon}
       </div>
-      <div>
-        <h3 className="font-bold text-xs sm:text-sm leading-snug">{title}</h3>
-        <p className="text-[11px] sm:text-xs text-gray-600 leading-snug">{text}</p>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-bold text-[10px] sm:text-xs md:text-sm leading-tight sm:leading-snug text-emerald-950">{title}</h3>
+        <p className="text-[9px] sm:text-[11px] md:text-xs text-gray-600 leading-tight sm:leading-snug mt-0.5">{text}</p>
       </div>
     </div>
   );
