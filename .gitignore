@@ -24,7 +24,8 @@ Thumbs.db
 backend/src/config/firebase-service-account.json
 
 # Local uploads
-backend/uploads/
+backend/uploads/spaces/
+backend/uploads/deals/
 
 # Temporary files & reports
 frontend/eslint-report.json
