@@ -428,7 +428,7 @@ function AboutPage() {
               {/* Nội dung cuộn */}
               <div className="flex-1 overflow-y-auto pr-3 mt-4 custom-scroll">
                 <p className="text-gray-700 leading-relaxed">
-                  Giữa miền sơn cước phía Tây Hà Tĩnh, Hương Sơn hiện lên với
+                  Giữa miền sơn cước phía Tây Bắc Hà Tĩnh, Hương Sơn hiện lên với
                   những dãy núi trùng điệp, dòng suối mát lành và những cánh
                   đồng trải dài theo thung lũng.
                 </p>
