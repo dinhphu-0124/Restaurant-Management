@@ -23,8 +23,9 @@ Thumbs.db
 # Firebase configuration
 backend/src/config/firebase-service-account.json
 
-# Local uploads (allowed for static production deployment)
-# backend/uploads/
+# Local uploads
+backend/uploads/spaces/
+backend/uploads/deals/
 
 # Temporary files & reports
 frontend/eslint-report.json
