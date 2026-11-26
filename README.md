@@ -238,12 +238,14 @@ Hệ thống sẽ tự động kích hoạt các dịch vụ tại:
 
 ## 👥 Danh Sách Tài Khoản Trải Nghiệm Mẫu
 
-| Tài khoản | Tên đăng nhập / Email | Mật khẩu | Quyền hạn (Role) | Mô tả phạm vi truy cập |
+Hệ thống đã thiết lập sẵn các tài khoản mẫu cho từng phân hệ (đã được kích hoạt và kiểm thử trực tiếp trên môi trường Production):
+
+| Phân hệ / Vai trò | Email đăng nhập | Mật khẩu | Trang đăng nhập | Quyền hạn & Phạm vi truy cập |
 | :--- | :--- | :--- | :--- | :--- |
-| **Super Admin** | `admin` / `admin@dehuongson.vn` | `admin123` | `admin` | Toàn quyền quản trị hệ thống, báo cáo doanh thu, cấu hình |
-| **Quản lý** | `manager@dehuongson.vn` | `manager123` | `manager` | Quản lý đặt bàn, điều phối sơ đồ bàn, duyệt menu & ưu đãi |
-| **Thu ngân** | `cashier@dehuongson.vn` | `cashier123` | `cashier` | Quản lý hóa đơn, xác nhận thanh toán chuyển khoản & tiền mặt |
-| **Khách hàng** | `khachhang@gmail.com` | `123456` | `user` | Đặt bàn, chọn món, lưu lịch sử và đánh giá món ăn |
+| **Khách hàng (Client)** | `khachhang@gmail.com` | `123456` | [/login](https://dehuongson.vercel.app/login) | Đặt bàn, đặt món, thanh toán VietQR, xem lịch sử đơn hàng (hoặc dùng nút *Đăng nhập bằng Google*) |
+| **Super Admin** | `admin@gmail.com` | `Admin@123` | [/admin/login](https://dehuongson.vercel.app/admin/login) | Toàn quyền hệ thống, xem biểu đồ doanh thu, cấu hình bàn, nhân sự |
+| **Quản lý (Manager)** | `manager@dehuongson.com` | `123456` | [/admin/login](https://dehuongson.vercel.app/admin/login) | Điều phối sơ đồ bàn, duyệt đặt bàn, quản lý menu & chương trình ưu đãi |
+| **Nhân viên (Staff)** | `staff@dehuongson.com` | `123456` | [/admin/login](https://dehuongson.vercel.app/admin/login) | Quản lý đơn hàng, theo dõi trạng thái bàn ăn thời gian thực |
 
 ---
 
