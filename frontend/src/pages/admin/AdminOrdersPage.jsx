@@ -4,8 +4,6 @@ import { showAdminToast } from "../../components/admin/AdminToast";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import { getCurrentUser, getAuthToken } from "../../utils/auth";
 import { socket } from "../../utils/socket";
-import * as XLSX from "xlsx-js-style";
-import { saveAs } from "file-saver";
 import {
   getStatusTextOrder, getStatusStyleOrder, getServiceText,
   getPaymentText, getPaymentStatusText,
@@ -183,31 +181,37 @@ function AdminOrdersPage() {
   };
   const mapOrderToExcelRow = (order, index) => ({ STT: index + 1, "Mã đơn": order.id || "", "Khách hàng": order.customerName || order.fullName || order.name || "", "Số điện thoại": order.phone || "", "Loại phục vụ": getServiceText(order.serviceType), "Phương thức thanh toán": getPaymentText(order.paymentMethod), "Tổng tiền": Number(order.total || order.totalPrice || 0), "Trạng thái": getStatusTextOrder(order.status), "Ngày tạo": formatDateTimeOrder(order.createdAt) });
   const setSheetColumnWidths = (worksheet, widths) => { worksheet["!cols"] = widths.map((width) => ({ wch: width })); };
-  const formatMoneyColumn = (worksheet, columnIndex) => {
-    if (!worksheet["!ref"]) return;
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    for (let row = 1; row <= range.e.r; row++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: columnIndex });
-      if (worksheet[cellAddress]) worksheet[cellAddress].z = '#,##0 "₫"';
-    }
-  };
-  const styleWorksheet = (worksheet, { centerCols = [], rightCols = [], boldRows = [] } = {}) => {
-    if (!worksheet["!ref"]) return;
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    for (let row = range.s.r; row <= range.e.r; row++) {
-      for (let col = range.s.c; col <= range.e.c; col++) {
-        const cell = XLSX.utils.encode_cell({ r: row, c: col });
-        if (!worksheet[cell]) continue;
-        const isBoldRow = boldRows.includes(row);
-        let horizontal = "left";
-        if (isBoldRow || centerCols.includes(col)) horizontal = "center";
-        else if (rightCols.includes(col)) horizontal = "right";
-        worksheet[cell].s = { ...worksheet[cell].s, font: { ...(worksheet[cell].s?.font || {}), bold: isBoldRow }, alignment: { ...(worksheet[cell].s?.alignment || {}), horizontal, vertical: "center" } };
-      }
-    }
-  };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const [XLSX, { saveAs }] = await Promise.all([
+      import("xlsx-js-style"),
+      import("file-saver"),
+    ]);
+
+    const formatMoneyColumn = (worksheet, columnIndex) => {
+      if (!worksheet["!ref"]) return;
+      const range = XLSX.utils.decode_range(worksheet["!ref"]);
+      for (let row = 1; row <= range.e.r; row++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: columnIndex });
+        if (worksheet[cellAddress]) worksheet[cellAddress].z = '#,##0 "₫"';
+      }
+    };
+    const styleWorksheet = (worksheet, { centerCols = [], rightCols = [], boldRows = [] } = {}) => {
+      if (!worksheet["!ref"]) return;
+      const range = XLSX.utils.decode_range(worksheet["!ref"]);
+      for (let row = range.s.r; row <= range.e.r; row++) {
+        for (let col = range.s.c; col <= range.e.c; col++) {
+          const cell = XLSX.utils.encode_cell({ r: row, c: col });
+          if (!worksheet[cell]) continue;
+          const isBoldRow = boldRows.includes(row);
+          let horizontal = "left";
+          if (isBoldRow || centerCols.includes(col)) horizontal = "center";
+          else if (rightCols.includes(col)) horizontal = "right";
+          worksheet[cell].s = { ...worksheet[cell].s, font: { ...(worksheet[cell].s?.font || {}), bold: isBoldRow }, alignment: { ...(worksheet[cell].s?.alignment || {}), horizontal, vertical: "center" } };
+        }
+      }
+    };
+
     if (dateMode === "year" && dateRange?.startDate && dateRange?.endDate) {
       // Year export
       const workbook = XLSX.utils.book_new();

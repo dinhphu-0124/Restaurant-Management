@@ -21,15 +21,24 @@ const dealStorage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `deal-${Date.now()}${ext}`);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeName = `deal-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    cb(null, safeName);
   },
 });
 
 const uploadDealImage = multer({
   storage: dealStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Chỉ hỗ trợ tải lên các tệp định dạng JPG, JPEG, PNG, WEBP."));
+    }
   },
 });
 

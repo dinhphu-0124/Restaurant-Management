@@ -2,7 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import AdminSidebar from "../components/admin/AdminSidebar";
 import AdminHeader from "../components/admin/AdminHeader";
-import { Download, Plus } from "lucide-react";
+import { Download, Plus, Loader2 } from "lucide-react";
 import AppButton from "../components/ui/AppButton";
 import { getCurrentUser, getAuthToken } from "../utils/auth";
 import { canUseAction } from "../utils/permissions";
@@ -14,6 +14,7 @@ function AdminLayout() {
   const location = useLocation();
   const currentUser = getCurrentUser();
   const [exportExcelHandler, setExportExcelHandler] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [headerAction, setHeaderAction] = useState(null);
   // tìm kiếm
   const [globalSearch, setGlobalSearch] = useState("");
@@ -167,17 +168,27 @@ function AdminLayout() {
   const isRevenuePage = location.pathname === "/admin/revenue";
   const isReportsPage = location.pathname === "/admin/reports";
 
+  const handleTriggerExport = async () => {
+    if (!exportExcelHandler || isExporting) return;
+    try {
+      setIsExporting(true);
+      await exportExcelHandler();
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const pageAction = (isOrdersPage || isRevenuePage || isReportsPage) && canUseAction(currentUser, "reports:export") ? (
     <AppButton
       variant="primary"
       size="md"
-      leftIcon={<Download size={16} className="shrink-0" />}
-      onClick={() => exportExcelHandler && exportExcelHandler()}
-      disabled={!exportExcelHandler}
+      leftIcon={isExporting ? <Loader2 size={16} className="shrink-0 animate-spin" /> : <Download size={16} className="shrink-0" />}
+      onClick={handleTriggerExport}
+      disabled={!exportExcelHandler || isExporting}
       className="shadow-sm whitespace-nowrap shrink-0 text-xs sm:text-sm px-2.5 sm:px-4 h-9 sm:h-10"
     >
-      <span className="hidden sm:inline">Xuất Excel</span>
-      <span className="sm:hidden">Excel</span>
+      <span className="hidden sm:inline">{isExporting ? "Đang xuất..." : "Xuất Excel"}</span>
+      <span className="sm:hidden">{isExporting ? "Xuất..." : "Excel"}</span>
     </AppButton>
   ) : (isMenuPage || isSpacesPage) && headerAction ? (
     <AppButton

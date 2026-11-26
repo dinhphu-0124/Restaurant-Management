@@ -514,6 +514,8 @@ function Home() {
             key={image}
             src={image}
             alt="Món ngon đặc sản dê núi Hương Sơn tại nhà hàng Dê Hương Sơn Hà Nội"
+            loading={index === 0 ? "eager" : "lazy"}
+            fetchPriority={index === 0 ? "high" : "auto"}
             className={`absolute inset-0 w-full h-full object-cover transition-all duration-[2000ms] ease-in-out ${index === currentHero
               ? "opacity-100 scale-100"
               : "opacity-0 scale-100"

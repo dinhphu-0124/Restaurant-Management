@@ -20,13 +20,51 @@ const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const activityLogRoutes = require("./src/routes/activityLogRoutes");
 const categoryRoutes = require("./src/routes/categoryRoutes");
 const revenueRoutes = require("./src/routes/revenueRoutes");
+const { requireAuth, requireAdmin } = require("./src/middleware/authMiddleware");
+const { authRateLimiter, apiRateLimiter } = require("./src/middleware/rateLimitMiddleware");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// CORS Security Configuration
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : [];
+
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000",
+  "https://dehuongson.vercel.app",
+];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (
+        !origin ||
+        process.env.NODE_ENV !== "production" ||
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app")
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS policy violation: Origin not allowed"));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rate Limiting Protection
+app.use("/api/auth", authRateLimiter);
+app.use("/api", apiRateLimiter);
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -50,7 +88,6 @@ const frontendDist = path.join(__dirname, "../frontend/dist");
 if (require("fs").existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
 }
-app.use("/src", express.static(path.join(__dirname, "../frontend/src")));
 app.use("/images", express.static(path.join(__dirname, "../frontend/public/images")));
 
 app.get("/api/health", (req, res) => {
@@ -63,17 +100,27 @@ app.get("/api/health", (req, res) => {
 // Webhook SePay
 app.post("/api/sepay/webhook", async (req, res) => {
   try {
-    const payment = req.body;
+    const payment = req.body || {};
 
     console.log("=== SEPAY WEBHOOK RECEIVED ===");
     console.log(payment);
 
+    if (!payment || typeof payment !== "object" || Object.keys(payment).length === 0) {
+      return res.status(400).json({ success: false, message: "Request body rỗng hoặc không đúng định dạng JSON." });
+    }
+
     // Xác thực Webhook Security
     const webhookApiKey = req.headers["authorization"] || req.headers["x-sepay-key"];
     const configuredSecret = process.env.SEPAY_WEBHOOK_SECRET;
-    if (configuredSecret && webhookApiKey !== `Apikey ${configuredSecret}` && webhookApiKey !== configuredSecret) {
-      console.warn(`[Security Alert] Webhook không hợp lệ từ IP: ${req.ip}`);
-      return res.status(401).json({ success: false, message: "Unauthorized webhook signature." });
+
+    if (configuredSecret) {
+      const isValid = webhookApiKey === `Apikey ${configuredSecret}` || webhookApiKey === configuredSecret;
+      if (!isValid) {
+        console.warn(`[Security Alert] Webhook không hợp lệ từ IP: ${req.ip}`);
+        return res.status(401).json({ success: false, message: "Unauthorized webhook signature." });
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      console.warn("[Security Alert] SEPAY_WEBHOOK_SECRET chưa được cấu hình trên production. Khuyến nghị thiết lập để tăng cường bảo mật.");
     }
 
     const paymentContent = String(
@@ -85,35 +132,74 @@ app.post("/api/sepay/webhook", async (req, res) => {
       return res.status(400).json({ success: false, message: "Dữ liệu webhook không hợp lệ." });
     }
 
-    const [orders] = await db.query(`
-      SELECT id, order_code, payment_content, total
-      FROM orders
-      WHERE payment_status != 'paid'
-      ORDER BY created_at DESC
-      LIMIT 100
-    `);
+    let matchedOrder = null;
+    let matchedBooking = null;
 
-    const matchedOrder = orders.find((order) => {
-      const orderCode = String(
-        order.payment_content || order.order_code || "",
-      ).replace(/[^A-Z0-9]/gi, "");
+    // 1. Tối ưu tìm kiếm trực tiếp O(1) qua Index nếu mã đơn tuân theo tiền tố chuẩn (DH... hoặc DB...)
+    const orderCodeMatch = paymentContent.match(/DH[0-9]+/i);
+    const bookingCodeMatch = paymentContent.match(/DB[0-9]+/i);
 
-      return paymentContent.toLowerCase().includes(orderCode.toLowerCase());
-    });
+    if (orderCodeMatch) {
+      const code = orderCodeMatch[0].toUpperCase();
+      const [orderRows] = await db.query(
+        `SELECT id, order_code, payment_content, total
+         FROM orders
+         WHERE (order_code = ? OR payment_content LIKE ?) AND payment_status != 'paid'
+         LIMIT 1`,
+        [code, `%${code}%`]
+      );
+      if (orderRows.length > 0) {
+        matchedOrder = orderRows[0];
+      }
+    }
 
-    // 2. Kiểm tra các bàn đang phục vụ (bookings) hoặc đặt bàn chờ cọc (status = 'pending')
-    const [bookings] = await db.query(`
-      SELECT id, status, payment_status, total, deposit_amount, customer_name, email, booking_date, booking_time, guests, note
-      FROM bookings
-      WHERE deleted_at IS NULL AND payment_status != 'paid'
-      ORDER BY created_at DESC
-      LIMIT 100
-    `);
+    if (!matchedOrder && bookingCodeMatch) {
+      const bId = bookingCodeMatch[0].substring(2);
+      const [bookingRows] = await db.query(
+        `SELECT id, status, payment_status, total, deposit_amount, customer_name, email, booking_date, booking_time, guests, note
+         FROM bookings
+         WHERE (id = ? OR booking_code = ?) AND deleted_at IS NULL AND payment_status != 'paid'
+         LIMIT 1`,
+        [bId, bookingCodeMatch[0].toUpperCase()]
+      );
+      if (bookingRows.length > 0) {
+        matchedBooking = bookingRows[0];
+      }
+    }
 
-    const matchedBooking = bookings.find((booking) => {
-      const bookingCode = `DB${booking.id}`;
-      return paymentContent.toLowerCase().includes(bookingCode.toLowerCase());
-    });
+    // 2. Dự phòng quét 50 giao dịch gần nhất nếu mã giao dịch không có tiền tố chuẩn
+    if (!matchedOrder && !matchedBooking) {
+      const [orders] = await db.query(`
+        SELECT id, order_code, payment_content, total
+        FROM orders
+        WHERE payment_status != 'paid'
+        ORDER BY created_at DESC
+        LIMIT 50
+      `);
+
+      matchedOrder = orders.find((order) => {
+        const orderCode = String(
+          order.payment_content || order.order_code || "",
+        ).replace(/[^A-Z0-9]/gi, "");
+
+        return orderCode && paymentContent.toLowerCase().includes(orderCode.toLowerCase());
+      });
+
+      if (!matchedOrder) {
+        const [bookings] = await db.query(`
+          SELECT id, status, payment_status, total, deposit_amount, customer_name, email, booking_date, booking_time, guests, note
+          FROM bookings
+          WHERE deleted_at IS NULL AND payment_status != 'paid'
+          ORDER BY created_at DESC
+          LIMIT 50
+        `);
+
+        matchedBooking = bookings.find((booking) => {
+          const bookingCode = `DB${booking.id}`;
+          return paymentContent.toLowerCase().includes(bookingCode.toLowerCase());
+        });
+      }
+    }
 
     if (matchedOrder) {
       // Lưu vào order_payments
@@ -216,8 +302,8 @@ app.post("/api/sepay/webhook", async (req, res) => {
   }
 });
 
-// API reset thủ công (chỉ dùng nội bộ / admin)
-app.post("/api/admin/reset-stale-tables", async (req, res) => {
+// API reset thủ công (yêu cầu quyền Admin)
+app.post("/api/admin/reset-stale-tables", requireAuth, requireAdmin, async (req, res) => {
   try {
     await resetStaleTables();
     res.json({ success: true, message: "Đã reset bàn cũ thành công." });
@@ -486,6 +572,9 @@ server.listen(PORT, async () => {
       console.log("pin_code migration successful!");
     }
 
+    // Tối ưu hóa Database Indexes (PERF-03)
+    await ensureDatabaseIndexes();
+
     // Bắt đầu chạy quét lịch hẹn nhắc nhở định kỳ mỗi 15 phút
     setInterval(checkAndSendBookingReminders, 15 * 60 * 1000);
     // Chạy thử luôn lần đầu tiên
@@ -494,3 +583,29 @@ server.listen(PORT, async () => {
     console.error("Database migration error:", err);
   }
 });
+
+async function ensureDatabaseIndexes() {
+  try {
+    const indexesToAdd = [
+      { table: "orders", name: "idx_orders_created_at", cols: "(created_at)" },
+      { table: "orders", name: "idx_orders_phone", cols: "(phone)" },
+      { table: "orders", name: "idx_orders_order_code", cols: "(order_code)" },
+      { table: "orders", name: "idx_orders_payment_status", cols: "(payment_status, created_at)" },
+      { table: "bookings", name: "idx_bookings_date_status", cols: "(booking_date, status)" },
+      { table: "bookings", name: "idx_bookings_phone", cols: "(phone)" },
+    ];
+
+    for (const idx of indexesToAdd) {
+      const [existing] = await db.query(
+        `SHOW INDEX FROM ${idx.table} WHERE Key_name = ?`,
+        [idx.name]
+      );
+      if (existing.length === 0) {
+        console.log(`[DB Index] Khởi tạo Index ${idx.name} trên bảng ${idx.table}...`);
+        await db.query(`CREATE INDEX ${idx.name} ON ${idx.table} ${idx.cols}`);
+      }
+    }
+  } catch (err) {
+    console.warn("[DB Index] Kiểm tra/tạo index:", err.message);
+  }
+}

@@ -26,13 +26,18 @@ exports.getDashboardStats = async (req, res) => {
     const [orders] = await db.query(
       `SELECT id, total, status, DATE(created_at) as date
        FROM orders
-       WHERE status = 'paid' OR status = 'completed' OR payment_status = 'paid'`
+       WHERE (status = 'paid' OR status = 'completed' OR payment_status = 'paid')
+         AND DATE(created_at) IN (?, ?)`,
+      [today, yesterday]
     );
 
     const [bookings] = await db.query(
       `SELECT id, total, status, DATE(created_at) as date, cart_items
        FROM bookings
-       WHERE deleted_at IS NULL AND (status = 'completed' OR payment_status = 'paid')`
+       WHERE deleted_at IS NULL 
+         AND (status = 'completed' OR payment_status = 'paid')
+         AND DATE(created_at) IN (?, ?)`,
+      [today, yesterday]
     );
 
     // Fetch all menu items for booking cost lookup

@@ -12,8 +12,6 @@ import {
 import { AnimatedNumber } from "../../components/admin/AdminDashboardComponents";
 import GlobalPagination from "../../components/admin/GlobalPagination";
 import { getAdvancedDashboardData } from "../../services/revenueService";
-import * as XLSX from "xlsx-js-style";
-import { saveAs } from "file-saver";
 
 function StatCard({ title, value, growth, icon: Icon, isCurrency = false, subtitle = "" }) {
   const isUp = growth >= 0;
@@ -81,8 +79,13 @@ export default function AdminRevenuePage() {
     }
   }, [data]);
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!data) return;
+    const [XLSX, { saveAs }] = await Promise.all([
+      import("xlsx-js-style"),
+      import("file-saver"),
+    ]);
+
     const ws_data = [
       ["BÁO CÁO DOANH THU CHI TIẾT"],
       [],

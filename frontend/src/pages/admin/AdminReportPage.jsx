@@ -7,8 +7,6 @@ import {
   ArrowUpRight, Printer, FileSpreadsheet, FileText, ChevronDown, Check,
   User, MapPin, CreditCard, LayoutDashboard
 } from "lucide-react";
-import * as XLSX from "xlsx-js-style";
-import { saveAs } from "file-saver";
 import GlobalPagination from "../../components/admin/GlobalPagination";
 import { removeVietnameseTones, calculateSearchScore } from "../../utils/string";
 import {
@@ -567,7 +565,12 @@ function AdminReportPage() {
   }, [kpiStats, reports, activeDateRange]);
 
   // Export Excel
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const [XLSX, { saveAs }] = await Promise.all([
+      import("xlsx-js-style"),
+      import("file-saver"),
+    ]);
+
     const exportData = sortedReports.map((r, i) => ({
       "STT": i + 1,
       "Mã đơn": r.orderId,
@@ -620,7 +623,8 @@ function AdminReportPage() {
   }, [sortedReports]);
 
   // Export CSV
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    const { saveAs } = await import("file-saver");
     const headers = ["STT,Ma don,Ngay gio,Khach hang,SDT,Nhan vien,Ban,Khu vuc,Thanh toan,Tong phu,Giam gia,Doanh thu thuan,Gia von,Loi nhuan\n"];
     const rows = sortedReports.map((r, i) => {
       return `${i + 1},${r.orderId},"${new Date(r.date).toLocaleString("vi-VN")}",${r.customerName || "Khach le"},${r.phone || ""},${r.staffName || ""},${r.tableCode || ""},${r.area || ""},${r.paymentMethod},${r.subtotal},${r.discount},${r.total},${r.cost},${r.profit}\n`;

@@ -4,22 +4,21 @@ import RatingStars from "./RatingStars";
 import AppBadge from "./ui/AppBadge";
 import { getImageUrl } from "../config/api";
 
-function getBadgeIcon(badge) {
+function renderBadgeIcon(badge) {
   const b = String(badge || "").toLowerCase();
-  if (b.includes("đặc sản")) return Sparkles;
-  if (b.includes("bán chạy")) return Flame;
-  if (b.includes("mới")) return Zap;
-  if (b.includes("đặc sắc")) return Crown;
-  if (b.includes("tâm huyết")) return Heart;
-  if (b.includes("sắp hết")) return Clock;
-  return Award;
+  if (b.includes("đặc sản")) return <Sparkles size={10} className="text-amber-200" />;
+  if (b.includes("bán chạy")) return <Flame size={10} className="text-amber-200" />;
+  if (b.includes("mới")) return <Zap size={10} className="text-amber-200" />;
+  if (b.includes("đặc sắc")) return <Crown size={10} className="text-amber-200" />;
+  if (b.includes("tâm huyết")) return <Heart size={10} className="text-amber-200" />;
+  if (b.includes("sắp hết")) return <Clock size={10} className="text-amber-200" />;
+  return <Award size={10} className="text-amber-200" />;
 }
 
 function DishCard({ dish, onOpenDetail, onAddToCart }) {
   const hasReviews = Number(dish.reviews || 0) > 0;
   const isPaused = dish.status === "paused";
   const isLow = dish.status === "low";
-  const BadgeIcon = dish.badge ? getBadgeIcon(dish.badge) : null;
 
   return (
     <div
@@ -50,7 +49,7 @@ function DishCard({ dish, onOpenDetail, onAddToCart }) {
         )}
         {dish.badge && String(dish.badge).trim() !== "" && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-sm tracking-wide">
-            {BadgeIcon && <BadgeIcon size={10} className="text-amber-200" />}
+            {renderBadgeIcon(dish.badge)}
             <span>{dish.badge}</span>
           </span>
         )}
@@ -126,4 +125,4 @@ function DishCard({ dish, onOpenDetail, onAddToCart }) {
   );
 }
 
-export default DishCard;
+export default React.memo(DishCard);
