@@ -2,6 +2,7 @@
 
 # 🐐 HỆ THỐNG QUẢN LÝ NHÀ HÀNG DÊ HƯƠNG SƠN
 ### Restaurant Management & Smart Booking System
+#### 🎓 ĐỒ ÁN / CHUYÊN ĐỀ TỐT NGHIỆP ĐẠI HỌC
 
 *Giải pháp chuyển đổi số toàn diện cho nhà hàng ăn uống, tích hợp đặt bàn thông minh, thực đơn trực tuyến, thanh toán VietQR và bảng điều khiển quản trị vận hành thời gian thực.*
 
@@ -21,6 +22,10 @@
 ---
 
 ## 📌 Giới Thiệu Dự Án (Project Overview)
+
+> [!NOTE]
+> **🎓 DỰ ÁN CHUYÊN ĐỀ TỐT NGHIỆP ĐẠI HỌC**  
+> Đây là sản phẩm nghiên cứu và phát triển phần mềm ứng dụng trong khuôn khổ **Chuyên đề tốt nghiệp Đại học** của tôi. Dự án tập trung giải quyết bài toán chuyển đổi số toàn diện cho mô hình kinh doanh nhà hàng ẩm thực thực tế (Nhà hàng Dê Hương Sơn), kết hợp giữa trải nghiệm khách hàng tiện lợi và quy trình vận hành - quản trị nhà hàng chuẩn mực trên nền tảng đám mây.
 
 **Dê Hương Sơn** là hệ thống phần mềm quản lý nhà hàng hiện đại được xây dựng theo mô hình **Full-stack Cloud Architecture** nhằm số hóa toàn bộ quy trình vận hành của nhà hàng ẩm thực:
 1. **Khách hàng (Client Web Portal):** Khám phá thực đơn đặc sắc với 144+ món ăn, tìm kiếm & lọc đa tiêu chí, đặt bàn theo sơ đồ trực quan theo từng khu vực (Tầng 1, Tầng 2, Phòng VIP), đặt món trước (Pre-order) và thanh toán tự động qua mã VietQR Napas247.
@@ -255,5 +260,5 @@ Hệ thống sẽ tự động kích hoạt các dịch vụ tại:
 ---
 
 <div align="center">
-  <sub>Được phát triển với tâm huyết nhằm hiện đại hóa và nâng tầm trải nghiệm ẩm thực truyền thống Việt Nam. ⭐ Hãy nhấn Star cho dự án nếu bạn thấy hữu ích!</sub>
+  <sub>🎓 Đồ án Chuyên đề tốt nghiệp Đại học • Hệ thống Quản lý Nhà hàng Dê Hương Sơn. ⭐ Hãy nhấn Star cho dự án nếu bạn thấy hữu ích!</sub>
 </div>
